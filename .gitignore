@@ -1,0 +1,3 @@
+/venv/
+do-not-commit/*
+.idea/*
