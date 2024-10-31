@@ -15,7 +15,7 @@ def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
         parse_tree = sqlfluff.parse(sql, dialect=dialect)
         for s in parse_tree["file"] if isinstance(parse_tree["file"], list) else [parse_tree["file"]]:
             if "statement" in s and "select_statement" in s["statement"]:
-                sql_statement = s["statement"]
+                sql_statement = s["statement"]["select_statement"]
                 break
     except APIParsingError as e:
         logging.error(f"SQL: {sql}\nError parsing SQL: {e}")
@@ -26,7 +26,7 @@ def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
     return { "allowed": len(errors) == 0, "errors": errors, "fixed": fixed  }
 
 
-def _verify_where_clause(statement: dict, config: dict) -> List[str]:
+def _verify_where_clause(statement: list, config: dict) -> List[str]:
     result = []
     where_clause = _get_clause(statement, "where")
     if where_clause is None:
@@ -35,7 +35,11 @@ def _verify_where_clause(statement: dict, config: dict) -> List[str]:
             for r in config["tables"][t].get("restrictions", []):
                 where_str += f"{r['column']} = {r['value']}"
                 result.append(f"Missing restriction for table: {t} column: {r['column']} value: {r['value']}")
-        statement["where_clause"] = where_str
+
+        for idx, e in enumerate(statement):
+            if isinstance(e, dict) and "from_clause" in e:
+                statement.insert(idx + 1, {"where_clause": where_str})
+                break
     else:
         for t in config["tables"]:
             for idx, r in enumerate(config["tables"][t].get("restrictions", [])):
@@ -50,13 +54,27 @@ def _verify_where_clause(statement: dict, config: dict) -> List[str]:
                     where_clause[f"{t}_{idx}"] = f" AND {r['column']} = {r['value']}"
     return result
 
+def _get_reference_value(e: dict) -> str:
+    if "naked_identifier" in e:
+        return e["naked_identifier"]
+    elif "quoted_identifier" in e:
+        return e["quoted_identifier"].strip('"')
+    else:
+        raise ValueError(f"Unexpected column reference: {e}")
+
+def _created_reference_value(value: str) -> dict:
+    if "-" in value or " " in value:
+        return {"quoted_identifier": f'"{value}"'}
+    else:
+        return {"naked_identifier": value}
+
 def _verify_restriction(restriction: dict, exp: list) -> bool:
     columns_found = False
     op_found = False
     value_found = False
     for e in exp:
         if "column_reference" in e:
-            if e["column_reference"]["naked_identifier"] == restriction["column"]:
+            if _get_reference_value(e["column_reference"]) == restriction["column"]:
                 columns_found = True
         if "comparison_operator" in e:
             if e["comparison_operator"]["raw_comparison_operator"] == "=":
@@ -67,10 +85,12 @@ def _verify_restriction(restriction: dict, exp: list) -> bool:
     return columns_found and op_found and value_found
 
 
-def _verify_tables_and_columns(parse_tree: dict, config: dict) -> (List[str], Optional[str]):
+def _verify_tables_and_columns(select_statement, config: dict) -> (List[str], Optional[str]):
     errors = []
     can_fix = True
-    from_clause = _get_clause(parse_tree, "from")
+    if isinstance(select_statement, dict):
+        select_statement = [{k: select_statement[k]} for k in select_statement]
+    from_clause = _get_clause(select_statement, "from")
     tables = _get_from_clause_tables(from_clause)
     for t in tables:
         if t not in config["tables"]:
@@ -78,7 +98,7 @@ def _verify_tables_and_columns(parse_tree: dict, config: dict) -> (List[str], Op
             can_fix = False
     if not can_fix:
         return errors, None
-    select_clause = _get_clause(parse_tree, "select")
+    select_clause = _get_clause(select_statement, "select")
     updated_select_clause_elements = []
     for k, e in _get_elements(select_clause):
         add_to_select = True
@@ -90,9 +110,7 @@ def _verify_tables_and_columns(parse_tree: dict, config: dict) -> (List[str], Op
                         for c in config["tables"][t]["columns"]:
                             updated_select_clause_elements.append({
                                 "select_clause_element": {
-                                    "column_reference": {
-                                        "naked_identifier": c
-                                    }
+                                    "column_reference": _created_reference_value(c)
                                 }
                             })
                             updated_select_clause_elements.append({"comma": ","})
@@ -101,7 +119,7 @@ def _verify_tables_and_columns(parse_tree: dict, config: dict) -> (List[str], Op
                     updated_select_clause_elements.pop()
                     add_to_select = False
             elif "column_reference" in e:
-                col_name = e["column_reference"]["naked_identifier"]
+                col_name = _get_reference_value(e["column_reference"])
                 column_found = False
                 for t in config["tables"]:
                     if col_name in config["tables"][t]["columns"]:
@@ -132,14 +150,15 @@ def _verify_tables_and_columns(parse_tree: dict, config: dict) -> (List[str], Op
         select_clause.extend(updated_select_clause_elements)
     elif isinstance(select_clause, dict):
         select_clause["select_clause"] = updated_select_clause_elements
-    where_clause_errors = _verify_where_clause(parse_tree, config)
+    where_clause_errors = _verify_where_clause(select_statement, config)
     errors.extend(where_clause_errors)
-    return errors, _convert_to_text(parse_tree) if can_fix else None
+    return errors, _convert_to_text(select_statement) if can_fix and len(errors) > 0 else None
 
 def _get_from_clause_tables(from_clause: dict) -> List[str]:
     result = []
     for e in _get_elements_by_name(from_clause, "from_expression"):
-        result.append(e["from_expression_element"]["table_expression"]["table_reference"]["naked_identifier"])
+        table_ref = e["from_expression_element"]["table_expression"]["table_reference"]
+        result.append(_get_reference_value(table_ref))
     return result
 
 
@@ -168,28 +187,21 @@ def _get_elements_by_name(clause: dict, name: str) -> list:
     return result
 
 
-def _get_clause(d: dict, name: str) -> dict:
-    clause = d["select_statement"]
-    if isinstance(clause, list):
-        for c in clause:
-            if f"{name}_clause" in c:
-                clause = c[f"{name}_clause"]
-                break
-    elif f"{name}_clause" in clause:
-        clause = clause[f"{name}_clause"]
-    else:
-        clause = None
-    return clause
+def _get_clause(clause: list, name: str) -> Optional[dict]:
+    for c in clause:
+        if f"{name}_clause" in c:
+            return c[f"{name}_clause"]
+    return None
 
 
-def _convert_to_text(parse_tree: dict) -> str:
+def _convert_to_text(item) -> str:
     result = ""
-    for v in parse_tree.values():
-        if isinstance(v, dict):
-            result += _convert_to_text(v)
-        elif isinstance(v, list):
-            for e in v:
-                result += _convert_to_text(e)
-        else:
-            result += v
+    if isinstance(item, dict):
+        for k in item:
+            result += _convert_to_text(item[k])
+    elif isinstance(item, list):
+        for e in item:
+            result += _convert_to_text(e)
+    else:
+        result += item
     return result

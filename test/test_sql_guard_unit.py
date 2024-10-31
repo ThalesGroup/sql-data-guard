@@ -2,7 +2,7 @@ from sql_guard import verify_sql
 
 class TestSQLErrors:
     def test_basic_sql_error(self):
-        result = verify_sql("this is not an sql statement ",{}, False)
+        result = verify_sql("this is not an sql statement ",{})
         assert result["allowed"] == False
         assert "Found unparsable section" in result["errors"][0]
 
@@ -37,6 +37,26 @@ class TestSingleTable:
         result = self.verify("SELECT * FROM orders WHERE id = 123")
         assert result == {'allowed': False,'errors': ['SELECT * is not allowed'],
                           "fixed": "SELECT id, product_name, account_id FROM orders WHERE id = 123"}
+
+    def test_quote_and_alias(self):
+        result = self.verify('SELECT "id" AS my_id, 1 FROM "orders" AS my_orders WHERE id = 123')
+        assert result == {'allowed': True,'errors': [],
+                          "fixed": None}
+
+    def test_sql_with_group_by_and_order_by(self):
+        result = self.verify("SELECT id FROM orders GROUP BY id ORDER BY id")
+        assert result == {'allowed': False,'errors': ['Missing restriction for table: orders column: id value: 123'],
+                          "fixed": "SELECT id FROM orders WHERE id = 123 GROUP BY id ORDER BY id"}
+
+    def test_sql_with_where_and_group_by_and_order_by(self):
+        result = self.verify("SELECT id FROM orders WHERE TRUE GROUP BY id ORDER BY id")
+        assert result == {'allowed': False,'errors': ['Missing restriction for table: orders column: id value: 123'],
+                          "fixed": "SELECT id FROM orders WHERE TRUE AND id = 123 GROUP BY id ORDER BY id"}
+
+    def test_col_expression(self):
+        result = self.verify("SELECT col + 1 FROM orders WHERE id = 123")
+        assert result == {'allowed': True,
+                          'errors': ['Column col is not allowed. Column removed from SELECT clause'], "fixed": None}
 
     def test_select_illegal_col(self):
         result = self.verify("SELECT id, col FROM orders WHERE id = 123")
