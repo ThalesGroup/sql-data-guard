@@ -32,7 +32,7 @@ config = {
 }
 
 query = "SELECT * FROM orders WHERE account_id = 123"
-result = verify_sql(query, config, fix=True)
+result = verify_sql(query, config)
 print(result)
 ```
 Output:

@@ -9,7 +9,7 @@ from sqlfluff.api import APIParsingError
 fileConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), "logging.conf"))
 
 
-def verify_sql(sql: str, config: dict, fix: bool = False, dialect: str = "ansi") -> dict:
+def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
     try:
         sql_statement = None
         parse_tree = sqlfluff.parse(sql, dialect=dialect)

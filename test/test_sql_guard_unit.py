@@ -19,7 +19,7 @@ class TestSingleTable:
                                     "restrictions": [{"column": "id", "value": 123}]
                                 }
                             }
-                        }, True)
+                        })
 
     def test_select_illegal_table(self):
         result = self.verify("SELECT * FROM users")
