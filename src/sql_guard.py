@@ -1,12 +1,43 @@
 import logging
 import os
 from logging.config import fileConfig
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, NamedTuple
 
 import sqlfluff
+from dill.detect import errors
 from sqlfluff.api import APIParsingError
 
 fileConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), "logging.conf"))
+
+class _VerificationResult:
+
+    def __init__(self):
+        super().__init__()
+        self._can_fix = True
+        self._errors = []
+        self._fixed = None
+
+    @property
+    def can_fix(self) -> bool:
+        return self._can_fix
+
+    def add_error(self, error: str, can_fix: bool = True):
+        self._errors.append(error)
+        if not can_fix:
+            self._can_fix = False
+
+    @property
+    def errors(self) -> List[str]:
+        return self._errors
+
+    @property
+    def fixed(self) -> Optional[str]:
+        return self._fixed
+
+    @fixed.setter
+    def fixed(self, value: Optional[str]):
+        self._fixed = value
+
 
 
 def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
@@ -22,19 +53,18 @@ def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
         return { "allowed": False, "errors": [e.msg]}
     if sql_statement is None:
         return {"allowed": False, "errors": ["Could not find a select statement"]}
-    errors, fixed = _verify_tables_and_columns(sql_statement, config)
-    return { "allowed": len(errors) == 0, "errors": errors, "fixed": fixed  }
+    result = _verify_tables_and_columns(sql_statement, config)
+    return { "allowed": len(result.errors) == 0, "errors": result.errors, "fixed": result.fixed }
 
 
-def _verify_where_clause(statement: list, config: dict) -> List[str]:
-    result = []
+def _verify_where_clause(result: _VerificationResult, config: dict, statement: list):
     where_clause = _get_clause(statement, "where")
     if where_clause is None:
         where_str = " WHERE "
         for t in config["tables"]:
             for r in config["tables"][t].get("restrictions", []):
                 where_str += f"{r['column']} = {r['value']}"
-                result.append(f"Missing restriction for table: {t} column: {r['column']} value: {r['value']}")
+                result.add_error(f"Missing restriction for table: {t} column: {r['column']} value: {r['value']}")
 
         for idx, e in enumerate(statement):
             if isinstance(e, dict) and "from_clause" in e:
@@ -50,9 +80,8 @@ def _verify_where_clause(statement: list, config: dict) -> List[str]:
                             found = True
                             break
                 if not found:
-                    result.append(f"Missing restriction for table: {t} column: {r['column']} value: {r['value']}")
+                    result.add_error(f"Missing restriction for table: {t} column: {r['column']} value: {r['value']}")
                     where_clause[f"{t}_{idx}"] = f" AND {r['column']} = {r['value']}"
-    return result
 
 def _get_reference_value(e: dict) -> str:
     if "naked_identifier" in e:
@@ -85,28 +114,41 @@ def _verify_restriction(restriction: dict, exp: list) -> bool:
     return columns_found and op_found and value_found
 
 
-def _verify_tables_and_columns(select_statement, config: dict) -> (List[str], Optional[str]):
-    errors = []
-    can_fix = True
+def _verify_tables_and_columns(select_statement, config: dict) -> _VerificationResult:
+    result = _VerificationResult()
     if isinstance(select_statement, dict):
         select_statement = [{k: select_statement[k]} for k in select_statement]
     from_clause = _get_clause(select_statement, "from")
     tables = _get_from_clause_tables(from_clause)
     for t in tables:
         if t not in config["tables"]:
-            errors.append(f"Table {t} is not allowed")
-            can_fix = False
-    if not can_fix:
-        return errors, None
+            result.add_error(f"Table {t} is not allowed", False)
+    if not result.can_fix:
+        return result
     select_clause = _get_clause(select_statement, "select")
+    updated_select_clause_elements = _verify_select_clause(result, config, select_clause)
+    select_clause.clear()
+    if isinstance(select_clause, list):
+        select_clause.extend(updated_select_clause_elements)
+    elif isinstance(select_clause, dict):
+        select_clause["select_clause"] = updated_select_clause_elements
+    _verify_where_clause(result, config, select_statement)
+    if result.can_fix and len(result.errors) > 0:
+        result.fixed = _convert_to_text(select_statement)
+    return result
+
+
+def _verify_select_clause(result: _VerificationResult, config: dict, select_clause: list) -> list:
     updated_select_clause_elements = []
     for k, e in _get_elements(select_clause):
         add_to_select = True
         if k == "select_clause_element":
+            if "expression" in e:
+                pass
             if e.get("wildcard_expression", {}).get("wildcard_identifier", {}).get("star", "") == "*":
-                errors.append("SELECT * is not allowed")
-                if can_fix:
-                    for t in tables:
+                result.add_error("SELECT * is not allowed")
+                if result.can_fix:
+                    for t in config["tables"]:
                         for c in config["tables"][t]["columns"]:
                             updated_select_clause_elements.append({
                                 "select_clause_element": {
@@ -128,7 +170,7 @@ def _verify_tables_and_columns(select_statement, config: dict) -> (List[str], Op
                     if column_found:
                         break
                 if not column_found:
-                    errors.append(f"Column {col_name} is not allowed. Column removed from SELECT clause")
+                    result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
                     remove_el = 0
                     for i in range(len(updated_select_clause_elements) - 1, 0, -1):
                         if "select_clause_element" not in updated_select_clause_elements[i]:
@@ -136,23 +178,20 @@ def _verify_tables_and_columns(select_statement, config: dict) -> (List[str], Op
                         else:
                             break
                     updated_select_clause_elements = updated_select_clause_elements[:-remove_el]
-                    el_found = False
-                    for el in updated_select_clause_elements:
-                        if "select_clause_element" in el:
-                            el_found = True
-                    if not el_found:
-                        can_fix = False
                     add_to_select = False
         if add_to_select:
             updated_select_clause_elements.append({k: e})
-    select_clause.clear()
-    if isinstance(select_clause, list):
-        select_clause.extend(updated_select_clause_elements)
-    elif isinstance(select_clause, dict):
-        select_clause["select_clause"] = updated_select_clause_elements
-    where_clause_errors = _verify_where_clause(select_statement, config)
-    errors.extend(where_clause_errors)
-    return errors, _convert_to_text(select_statement) if can_fix and len(errors) > 0 else None
+
+    found = False
+    for e in updated_select_clause_elements:
+        if "select_clause_element" in e:
+            found = True
+            break
+    if not found:
+        result.add_error("No columns left in SELECT clause", False)
+
+    return updated_select_clause_elements
+
 
 def _get_from_clause_tables(from_clause: dict) -> List[str]:
     result = []
