@@ -53,13 +53,42 @@ Here is a table with more examples of SQL queries and their corresponding JSON o
 
 This table provides a variety of SQL queries and their corresponding JSON outputs, demonstrating how `sql-guard` handles different scenarios.
 
-
-
 ## Installation
 To install sql-guard, use pip:
 
 ```bash
 pip install sql-guard
+```
+
+## Docker Repository
+
+sql-guard is also available as a Docker image, which can be used to run the application in a containerized environment. This is particularly useful for deployment in cloud environments or for maintaining consistency across different development setups.
+
+### Running the Docker Container
+
+To run the sql-guard Docker container, use the following command:
+
+```bash
+docker run -d --name sql-guard -p 8080:8080 imperva/sql-guard:latest
+
+### Calling the Docker Container Using REST API
+
+Once the `sql-guard` Docker container is running, you can interact with it using its REST API. Below is an example of how to verify an SQL query using `curl`:
+
+```bash
+curl -X POST http://localhost:8080/verify_sql \
+     -H "Content-Type: application/json" \
+     -d '{
+           "query": "SELECT * FROM orders WHERE account_id = 123",
+           "config": {
+             "tables": {
+               "orders": {
+                 "columns": ["id", "product_name", "account_id"],
+                 "restrictions": [{"column": "account_id", "value": 123}]
+               }
+             }
+           }
+         }'
 ```
 
 ## Contributing
