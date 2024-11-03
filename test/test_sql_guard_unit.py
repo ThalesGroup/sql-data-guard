@@ -36,7 +36,7 @@ class TestSingleTable:
     def test_select_star(self):
         result = self.verify("SELECT * FROM orders WHERE id = 123")
         assert result == {'allowed': False,'errors': ['SELECT * is not allowed'],
-                          "fixed": None}
+                          "fixed": "SELECT id, product_name, account_id FROM orders WHERE id = 123"}
 
     def test_two_cols(self):
         result = self.verify("SELECT id, product_name FROM orders WHERE id = 123")

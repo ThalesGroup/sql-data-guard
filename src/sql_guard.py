@@ -91,10 +91,13 @@ def _get_reference_value(e: dict) -> str:
         raise ValueError(f"Unexpected column reference: {e}")
 
 def _created_reference_value(value: str) -> dict:
+    return {"quoted_identifier": _quote_identifier(value)}
+
+def _quote_identifier(value: str) -> str:
     if "-" in value or " " in value:
-        return {"quoted_identifier": f'"{value}"'}
+        return f'"{value}"'
     else:
-        return {"naked_identifier": value}
+        return value
 
 def _verify_restriction(restriction: dict, exp: list) -> bool:
     columns_found = False
@@ -164,7 +167,14 @@ def _verify_select_clause(result: _VerificationResult, from_tables: List[str], c
 def _verify_select_clause_element(result: _VerificationResult, from_tables: List[str], config: dict, e: list):
     for el_name, el in _get_elements(e):
         if el_name == "wildcard_expression" and el.get("wildcard_identifier", {}).get("star", "") == "*":
-            result.add_error("SELECT * is not allowed", False)
+            result.add_error("SELECT * is not allowed", True)
+            sql_cols = ""
+            for t in from_tables:
+                for c in config["tables"][t]["columns"]:
+                    sql_cols += f"{_quote_identifier(c)}, "
+            sql_cols = sql_cols[:-2]
+            el.get("wildcard_identifier")["star"] = sql_cols
+            return True
         elif el_name == "column_reference":
             col_name = _get_reference_value(el)
             if not find_column(col_name, config, from_tables):
