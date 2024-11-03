@@ -4,11 +4,12 @@ sql-guard is an open-source project designed to verify that SQL queries access o
 
 ## Why Use sql-guard?
 
-You should use sql-guard if your application constructs SQL queries, and you need to ensure that only allowed data can be accessed. This is particularly useful if:
-- Your application constructs complex SQL queries.
-- Your application uses LLM (Large Language Models) to construct SQL queries and you cannot fully control the queries it creates.
+Consider using sql-guard if your application constructs SQL queries and you need to ensure that only permitted data is accessed. This is particularly beneficial if:
+- Your application generates complex SQL queries.
+- Your application employs LLM (Large Language Models) to create SQL queries, making it difficult to fully control the queries.
+- Different application users should have different permissions, and it is often hard to correlate an application user or role with a database user or role.
 
-sql-guard does not replace the database permissions model. Instead, it provides an additional layer of security, which is crucial when it is difficult or impossible to implement fine-grained, column-level, and row-level security in many database implementations. Instead of relying on the database  to enforce these restrictions, sql-guard helps you to overcome vendor-specific limitation can verify and modify queries before they are executed.
+sql-guard does not replace the database permissions model. Instead, it adds an extra layer of security, which is crucial when implementing fine-grained, column-level, and row-level security is challenging or impossible. Data restrictions are often complex and cannot be expressed by the database permissions model. For instance, you may need to restrict access to specific columns or rows based on intricate business logic, which many database implementations do not support. Instead of relying on the database to enforce these restrictions, sql-guard helps you overcome vendor-specific limitations by verifying and modifying queries before they are executed.
 
 ## How It Works
 
