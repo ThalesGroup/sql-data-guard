@@ -61,9 +61,9 @@ def _verify_where_clause(result: _VerificationResult, config: dict, statement: l
     if where_clause is None:
         where_str = " WHERE "
         for t in config["tables"]:
-            for r in config["tables"][t].get("restrictions", []):
+            for r in t.get("restrictions", []):
                 where_str += f"{r['column']} = {r['value']}"
-                result.add_error(f"Missing restriction for table: {t} column: {r['column']} value: {r['value']}")
+                result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
 
         for idx, e in enumerate(statement):
             if isinstance(e, dict) and "from_clause" in e:
@@ -71,7 +71,7 @@ def _verify_where_clause(result: _VerificationResult, config: dict, statement: l
                 break
     else:
         for t in config["tables"]:
-            for idx, r in enumerate(config["tables"][t].get("restrictions", [])):
+            for idx, r in enumerate(t.get("restrictions", [])):
                 found = False
                 for k, e in _get_elements(where_clause):
                     if k == "expression":
@@ -79,7 +79,7 @@ def _verify_where_clause(result: _VerificationResult, config: dict, statement: l
                             found = True
                             break
                 if not found:
-                    result.add_error(f"Missing restriction for table: {t} column: {r['column']} value: {r['value']}")
+                    result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
                     where_clause[f"{t}_{idx}"] = f" AND {r['column']} = {r['value']}"
 
 def _get_reference_value(e: dict) -> str:
@@ -123,7 +123,11 @@ def _verify_tables_and_columns(select_statement, config: dict) -> _VerificationR
     from_clause = _get_clause(select_statement, "from")
     tables = _get_from_clause_tables(from_clause)
     for t in tables:
-        if t not in config["tables"]:
+        found = False
+        for config_t in config["tables"]:
+            if t == config_t["table_name"]:
+                found = True
+        if not found:
             result.add_error(f"Table {t} is not allowed", False)
     if not result.can_fix:
         return result
@@ -170,8 +174,10 @@ def _verify_select_clause_element(result: _VerificationResult, from_tables: List
             result.add_error("SELECT * is not allowed", True)
             sql_cols = ""
             for t in from_tables:
-                for c in config["tables"][t]["columns"]:
-                    sql_cols += f"{_quote_identifier(c)}, "
+                for config_t in config["tables"]:
+                    if t == config_t["table_name"]:
+                        for c in config_t["columns"]:
+                            sql_cols += f"{_quote_identifier(c)}, "
             sql_cols = sql_cols[:-2]
             el.get("wildcard_identifier")["star"] = sql_cols
             return True
@@ -180,15 +186,23 @@ def _verify_select_clause_element(result: _VerificationResult, from_tables: List
             if not find_column(col_name, config, from_tables):
                 result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
                 return False
-        elif el_name == "expression":
-            return _verify_select_clause_element(result, from_tables, config, el)
+        elif el_name in ["expression", "function"]:
+            error_found = False
+            for _, r_e in _get_elements(el, "column_reference", True):
+                col_name = _get_reference_value(r_e)
+                if not find_column(col_name, config, from_tables):
+                    result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
+                    error_found = True
+            return not error_found
     return True
 
 
 def find_column(col_name: str, config: dict, from_tables: List[str]) -> bool:
     for t in from_tables:
-        if col_name in config["tables"][t]["columns"]:
-            return True
+        for config_t in config["tables"]:
+            if t == config_t["table_name"]:
+                if col_name in config_t["columns"]:
+                    return True
     return False
 
 
@@ -196,20 +210,28 @@ def _get_from_clause_tables(from_clause: dict) -> List[str]:
     result = []
     for _, e in _get_elements(from_clause, "from_expression"):
         table_ref = e["from_expression_element"]["table_expression"]["table_reference"]
+        if isinstance(table_ref, list):
+            table_ref = table_ref[-1]
         result.append(_get_reference_value(table_ref))
     return result
 
 
-def _get_elements(clause, name: str = None) ->  Generator[Tuple[str, any], None, None]:
+def _get_elements(clause, name: str = None, recursive: bool = False) ->  Generator[Tuple[str, any], None, None]:
     if isinstance(clause, dict):
         for k, v in clause.items():
             if name is None or name == k:
                 yield k, v
+            if recursive:
+                for e in _get_elements(v, name, recursive):
+                    yield e
     elif isinstance(clause, list):
         for e in clause:
             for k, v in e.items():
                 if name is None or name == k:
                     yield k, v
+                if recursive:
+                    for ek in _get_elements(v, name, recursive):
+                        yield ek
 
 
 def _get_clause(clause: list, name: str):

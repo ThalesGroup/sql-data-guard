@@ -13,12 +13,14 @@ class TestSingleTable:
     def verify(sql: str):
         return verify_sql(sql,
                         {
-                            "tables": {
-                                "orders": {
+                            "tables": [
+                                {
+                                    "table_name": "orders",
+                                    "database_name": "orders_db",
                                     "columns": ["id", "product_name", "account_id"],
                                     "restrictions": [{"column": "id", "value": 123}]
                                 }
-                            }
+                            ]
                         })
 
     def test_select_illegal_table(self):
@@ -87,5 +89,26 @@ class TestSingleTable:
         assert result == {'allowed': False,
                           'errors': ["Missing restriction for table: orders column: id value: 123"],
                           "fixed": "SELECT id FROM orders WHERE id = 234 AND id = 123"}
+
+    def test_table_and_database(self):
+        result = self.verify("SELECT id FROM orders_db.orders AS o WHERE id = 123")
+        assert result == {'allowed': True,
+                          'errors': [],
+                          "fixed": None}
+
+    def test_function_call(self):
+        result = self.verify("SELECT COUNT(DISTINCT id) FROM orders_db.orders AS o WHERE id = 123")
+        assert result == {'allowed': True,
+                          'errors': [],
+                          "fixed": None}
+
+    def test_function_call_illegal_col(self):
+        result = self.verify("SELECT COUNT(DISTINCT col) FROM orders_db.orders AS o WHERE id = 123")
+        assert result == {'allowed': False,
+                          'errors': ['Column col is not allowed. Column removed from SELECT clause',
+                                     'No legal elements in SELECT clause'],
+                          "fixed": None}
+
+
 
 
