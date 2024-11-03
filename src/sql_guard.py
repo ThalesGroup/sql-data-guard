@@ -183,21 +183,21 @@ def _verify_select_clause_element(result: _VerificationResult, from_tables: List
             return True
         elif el_name == "column_reference":
             col_name = _get_reference_value(el)
-            if not find_column(col_name, config, from_tables):
+            if not _find_column(col_name, config, from_tables):
                 result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
                 return False
         elif el_name in ["expression", "function"]:
             error_found = False
             for _, r_e in _get_elements(el, "column_reference", True):
                 col_name = _get_reference_value(r_e)
-                if not find_column(col_name, config, from_tables):
+                if not _find_column(col_name, config, from_tables):
                     result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
                     error_found = True
             return not error_found
     return True
 
 
-def find_column(col_name: str, config: dict, from_tables: List[str]) -> bool:
+def _find_column(col_name: str, config: dict, from_tables: List[str]) -> bool:
     for t in from_tables:
         for config_t in config["tables"]:
             if t == config_t["table_name"]:
