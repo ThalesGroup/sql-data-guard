@@ -36,7 +36,13 @@ class TestSingleTable:
     def test_select_star(self):
         result = self.verify("SELECT * FROM orders WHERE id = 123")
         assert result == {'allowed': False,'errors': ['SELECT * is not allowed'],
-                          "fixed": "SELECT id, product_name, account_id FROM orders WHERE id = 123"}
+                          "fixed": None}
+
+    def test_two_cols(self):
+        result = self.verify("SELECT id, product_name FROM orders WHERE id = 123")
+        assert result == {'allowed': True,'errors': [],
+                          "fixed": None}
+
 
     def test_quote_and_alias(self):
         result = self.verify('SELECT "id" AS my_id, 1 FROM "orders" AS my_orders WHERE id = 123')
@@ -54,14 +60,13 @@ class TestSingleTable:
                           "fixed": "SELECT id FROM orders WHERE TRUE AND id = 123 GROUP BY id ORDER BY id"}
 
     def test_col_expression(self):
-        # TODO, add more structured tests, to support many inputs.
-        #  Each JSON test will have a config + many tests + table in the db to verify SQL syntax (probably EXPLAIN)
         result = self.verify("SELECT col + 1 FROM orders WHERE id = 123")
-        assert result == {'allowed': True,
-                          'errors': ['Column col is not allowed. Column removed from SELECT clause'], "fixed": None}
+        assert result == {'allowed': False,
+                          'errors': ['Column col is not allowed. Column removed from SELECT clause',
+                                     'No legal elements in SELECT clause'], "fixed": None}
 
     def test_select_illegal_col(self):
-        result = self.verify("SELECT id, col FROM orders WHERE id = 123")
+        result = self.verify("SELECT col, id FROM orders WHERE id = 123")
         assert result == {'allowed': False,'errors': ['Column col is not allowed. Column removed from SELECT clause'],
                           "fixed": "SELECT id FROM orders WHERE id = 123"}
 
@@ -69,7 +74,7 @@ class TestSingleTable:
         result = self.verify("SELECT col1, col2 FROM orders WHERE id = 123")
         assert result == {'allowed': False,'errors': ['Column col1 is not allowed. Column removed from SELECT clause',
                                                       'Column col2 is not allowed. Column removed from SELECT clause',
-                                                      'No columns left in SELECT clause'],
+                                                      'No legal elements in SELECT clause'],
                           "fixed": None}
 
     def test_missing_restriction(self):

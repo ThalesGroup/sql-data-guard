@@ -1,10 +1,9 @@
 import logging
 import os
 from logging.config import fileConfig
-from typing import Optional, List, Tuple, NamedTuple
+from typing import Optional, List, Tuple, Generator
 
 import sqlfluff
-from dill.detect import errors
 from sqlfluff.api import APIParsingError
 
 fileConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), "logging.conf"))
@@ -126,107 +125,84 @@ def _verify_tables_and_columns(select_statement, config: dict) -> _VerificationR
     if not result.can_fix:
         return result
     select_clause = _get_clause(select_statement, "select")
-    updated_select_clause_elements = _verify_select_clause(result, config, select_clause)
-    select_clause.clear()
-    if isinstance(select_clause, list):
-        select_clause.extend(updated_select_clause_elements)
-    elif isinstance(select_clause, dict):
-        select_clause["select_clause"] = updated_select_clause_elements
+    _verify_select_clause(result, tables,  config, select_clause)
     _verify_where_clause(result, config, select_statement)
     if result.can_fix and len(result.errors) > 0:
         result.fixed = _convert_to_text(select_statement)
     return result
 
 
-def _verify_select_clause(result: _VerificationResult, config: dict, select_clause: list) -> list:
-    updated_select_clause_elements = []
-    for k, e in _get_elements(select_clause):
-        add_to_select = True
-        if k == "select_clause_element":
-            if "expression" in e:
-                pass
-            if e.get("wildcard_expression", {}).get("wildcard_identifier", {}).get("star", "") == "*":
-                result.add_error("SELECT * is not allowed")
-                if result.can_fix:
-                    for t in config["tables"]:
-                        for c in config["tables"][t]["columns"]:
-                            updated_select_clause_elements.append({
-                                "select_clause_element": {
-                                    "column_reference": _created_reference_value(c)
-                                }
-                            })
-                            updated_select_clause_elements.append({"comma": ","})
-                            updated_select_clause_elements.append({"whitespace": " "})
-                    updated_select_clause_elements.pop()
-                    updated_select_clause_elements.pop()
-                    add_to_select = False
-            elif "column_reference" in e:
-                col_name = _get_reference_value(e["column_reference"])
-                column_found = False
-                for t in config["tables"]:
-                    if col_name in config["tables"][t]["columns"]:
-                        column_found = True
-                        break
-                    if column_found:
-                        break
-                if not column_found:
-                    result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
-                    remove_el = 0
-                    for i in range(len(updated_select_clause_elements) - 1, 0, -1):
-                        if "select_clause_element" not in updated_select_clause_elements[i]:
-                            remove_el += 1
-                        else:
-                            break
-                    updated_select_clause_elements = updated_select_clause_elements[:-remove_el]
-                    add_to_select = False
-        if add_to_select:
-            updated_select_clause_elements.append({k: e})
+def _verify_select_clause(result: _VerificationResult, from_tables: List[str], config: dict, select_clause: list):
+    updated_select_clause = []
+    has_legal_elements = False
+    is_first_element = True
+    for e_name, e in _get_elements(select_clause):
+        if e_name == "select_clause_element":
+            if _verify_select_clause_element(result, from_tables, config, e):
+                if not is_first_element and not has_legal_elements:
+                    while len(updated_select_clause) > 0 and isinstance(updated_select_clause[-1], str):
+                        updated_select_clause.pop()
+                updated_select_clause.append(e)
+                has_legal_elements = True
+            else:
+                if has_legal_elements:
+                    while len(updated_select_clause) > 0 and isinstance(updated_select_clause[-1], str):
+                        updated_select_clause.pop()
+                updated_select_clause.append({})
+            is_first_element = False
+        else:
+            updated_select_clause.append(e)
+    if not has_legal_elements:
+        result.add_error("No legal elements in SELECT clause", False)
+    else:
+        select_clause.clear()
+        if isinstance(select_clause, dict):
+            select_clause["select_clause_element"] = updated_select_clause
+        else:
+            select_clause.extend(updated_select_clause)
 
-    found = False
-    for e in updated_select_clause_elements:
-        if "select_clause_element" in e:
-            found = True
-            break
-    if not found:
-        result.add_error("No columns left in SELECT clause", False)
+def _verify_select_clause_element(result: _VerificationResult, from_tables: List[str], config: dict, e: list):
+    for el_name, el in _get_elements(e):
+        if el_name == "wildcard_expression" and el.get("wildcard_identifier", {}).get("star", "") == "*":
+            result.add_error("SELECT * is not allowed", False)
+        elif el_name == "column_reference":
+            col_name = _get_reference_value(el)
+            if not find_column(col_name, config, from_tables):
+                result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
+                return False
+        elif el_name == "expression":
+            return _verify_select_clause_element(result, from_tables, config, el)
+    return True
 
-    return updated_select_clause_elements
+
+def find_column(col_name: str, config: dict, from_tables: List[str]) -> bool:
+    for t in from_tables:
+        if col_name in config["tables"][t]["columns"]:
+            return True
+    return False
 
 
 def _get_from_clause_tables(from_clause: dict) -> List[str]:
     result = []
-    for e in _get_elements_by_name(from_clause, "from_expression"):
+    for _, e in _get_elements(from_clause, "from_expression"):
         table_ref = e["from_expression_element"]["table_expression"]["table_reference"]
         result.append(_get_reference_value(table_ref))
     return result
 
 
-def _get_elements(clause) ->  List[Tuple[str, object]]:
+def _get_elements(clause, name: str = None) ->  Generator[Tuple[str, any], None, None]:
     if isinstance(clause, dict):
-        return [(k, v) for k, v in clause.items()]
+        for k, v in clause.items():
+            if name is None or name == k:
+                yield k, v
     elif isinstance(clause, list):
-        result = []
         for e in clause:
-            result.extend([(k, v) for k, v in e.items()])
-        return result
-    else:
-        raise ValueError(f"Unexpected type {type(clause)}")
+            for k, v in e.items():
+                if name is None or name == k:
+                    yield k, v
 
 
-def _get_elements_by_name(clause: dict, name: str) -> list:
-    result = []
-    for child in clause:
-        if isinstance(child, dict) and name in child:
-            el = child[name]
-        elif child == name:
-            el = clause[child]
-        else:
-            continue
-        result.append(el)
-    return result
-
-
-def _get_clause(clause: list, name: str) -> Optional[dict]:
+def _get_clause(clause: list, name: str):
     for c in clause:
         if f"{name}_clause" in c:
             return c[f"{name}_clause"]
