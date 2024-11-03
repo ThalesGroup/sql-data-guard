@@ -116,10 +116,17 @@ class TestSingleTable:
                           "fixed": None}
 
     def test_table_and_db_prefix(self):
-        result = self.verify("SELECT orders_db.orders.id FROM orders AS o WHERE id = 123")
+        result = self.verify("SELECT orders_db.orders.id FROM orders_db.orders WHERE orders_db.orders.id = 123")
         assert result == {'allowed': True,
                           'errors': [],
                           "fixed": None}
+
+    def test_table_alias(self):
+        result = self.verify("SELECT a.id FROM orders_db.orders AS a WHERE a.id = 123")
+        assert result == {'allowed': True,
+                          'errors': [],
+                          "fixed": None}
+
 
 
 
