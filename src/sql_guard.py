@@ -98,12 +98,26 @@ def _verify_where_clause(result: _VerificationContext, statement: list):
                 found = False
                 for k, e in _get_elements(where_clause):
                     if k == "expression":
-                        if _verify_restriction(r, e):
-                            found = True
-                            break
+                        for sub_exp in _split_expression(e, "AND"):
+                            if _verify_restriction(r, sub_exp):
+                                found = True
+                                break
                 if not found:
                     result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
                     where_clause[f"{t}_{idx}"] = f" AND {r['column']} = {r['value']}"
+
+def _split_expression(e: list, binary_operator: str) -> List[list]:
+    result = []
+    current = []
+    for el in e:
+        if isinstance(el, dict) and el.get("binary_operator", "") == binary_operator:
+            result.append(current)
+            current = []
+        else:
+            current.append(el)
+    if len(current) > 0:
+        result.append(current)
+    return result
 
 def _get_ref_table(e) -> _TableRef:
     if isinstance(e, dict):
@@ -148,20 +162,26 @@ def _quote_identifier(value: str) -> str:
         return value
 
 def _verify_restriction(restriction: dict, exp: list) -> bool:
-    columns_found = False
-    op_found = False
-    value_found = False
-    for e in exp:
-        if "column_reference" in e:
-            if _get_ref_col(e["column_reference"]).column_name == restriction["column"]:
-                columns_found = True
-        if "comparison_operator" in e:
-            if e["comparison_operator"]["raw_comparison_operator"] == "=":
-                op_found = True
-        if "numeric_literal" in e:
-            if int(e["numeric_literal"]) == restriction["value"]:
-                value_found = True
-    return columns_found and op_found and value_found
+    sub_exps = _split_expression(exp, "OR")
+    if len(sub_exps) > 1:
+        return False
+    for sub_exp in sub_exps:
+        columns_found = False
+        op_found = False
+        value_found = False
+        for e in sub_exp:
+            if isinstance(e, dict):
+                if "column_reference" in e:
+                    if _get_ref_col(e["column_reference"]).column_name == restriction["column"]:
+                        columns_found = True
+                if "comparison_operator" in e:
+                    if e["comparison_operator"]["raw_comparison_operator"] == "=":
+                        op_found = True
+                if "numeric_literal" in e:
+                    if int(e["numeric_literal"]) == restriction["value"]:
+                        value_found = True
+                if columns_found and op_found and value_found:
+                    return True
 
 
 def _verify_tables_and_columns(select_statement, config: dict) -> _VerificationContext:

@@ -46,11 +46,13 @@ Output:
 ```
 Here is a table with more examples of SQL queries and their corresponding JSON outputs:
 
-| SQL Query                                                    | JSON Output                                                                                                                                                                                 |
-|--------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `SELECT id, product_name FROM orders WHERE account_id = 123` | ```{ "allowed": true, "errors": [], "fixed": null } ```                                                                                                                                     |
+| SQL Query                                                    | JSON Output                                                                                                                                                                                  |
+|--------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SELECT id, product_name FROM orders WHERE account_id = 123` | ```{ "allowed": true, "errors": [], "fixed": null } ```                                                                                                                                      |
 | `SELECT id FROM orders WHERE account_id = 456`               | ```{ "allowed": false, "errors": ["Missing restriction for table: orders column: account_id value: 123"], "fixed": "SELECT id FROM orders WHERE account_id = 456 AND account_id = 123" } ``` |
-| `SELECT id, col FROM orders WHERE account_id = 123`          | ```{ "allowed": false, "errors": ["Column col is not allowed. Column removed from SELECT clause"], "fixed": "SELECT id FROM orders WHERE account_id = 123" } ```                       |
+| `SELECT id, col FROM orders WHERE account_id = 123`          | ```{ "allowed": false, "errors": ["Column col is not allowed. Column removed from SELECT clause"], "fixed": "SELECT id FROM orders WHERE account_id = 123" } ```                             |
+| `SELECT id FROM orders WHERE account_id = 123 OR 1 = 1`      | ```{ "allowed": false, "errors": ["Always-True expression is not allowed"], "fixed": "SELECT id FROM orders WHERE account_id = 123" } ```                                                    |
+
 
 This table provides a variety of SQL queries and their corresponding JSON outputs, demonstrating how `sql-guard` handles different scenarios.
 

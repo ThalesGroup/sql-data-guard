@@ -128,6 +128,12 @@ class TestSingleTable:
                           "fixed": None}
 
 
+    def test_sql_injection(self):
+        result = self.verify("SELECT id FROM orders WHERE id = 123 OR 1 = 1")
+        assert result == {'allowed': False,
+                          'errors': ["Always-True expression is not allowed"],
+                          "fixed": "SELECT id FROM orders WHERE id = 123"}
+
 
 
 
