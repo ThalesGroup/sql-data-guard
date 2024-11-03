@@ -109,6 +109,19 @@ class TestSingleTable:
                                      'No legal elements in SELECT clause'],
                           "fixed": None}
 
+    def test_table_prefix(self):
+        result = self.verify("SELECT orders.id FROM orders AS o WHERE id = 123")
+        assert result == {'allowed': True,
+                          'errors': [],
+                          "fixed": None}
+
+    def test_table_and_db_prefix(self):
+        result = self.verify("SELECT orders_db.orders.id FROM orders AS o WHERE id = 123")
+        assert result == {'allowed': True,
+                          'errors': [],
+                          "fixed": None}
+
+
 
 
 

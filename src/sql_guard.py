@@ -82,13 +82,16 @@ def _verify_where_clause(result: _VerificationResult, config: dict, statement: l
                     result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
                     where_clause[f"{t}_{idx}"] = f" AND {r['column']} = {r['value']}"
 
-def _get_reference_value(e: dict) -> str:
-    if "naked_identifier" in e:
-        return e["naked_identifier"]
-    elif "quoted_identifier" in e:
-        return e["quoted_identifier"].strip('"')
-    else:
-        raise ValueError(f"Unexpected column reference: {e}")
+def _get_reference_value(e) -> str:
+    if isinstance(e, dict):
+        if "naked_identifier" in e:
+            return e["naked_identifier"]
+        elif "quoted_identifier" in e:
+            return e["quoted_identifier"].strip('"')
+        else:
+            raise ValueError(f"Unexpected column reference: {e}")
+    elif isinstance(e, list):
+        return _get_reference_value(e[-1])
 
 def _created_reference_value(value: str) -> dict:
     return {"quoted_identifier": _quote_identifier(value)}
@@ -210,8 +213,6 @@ def _get_from_clause_tables(from_clause: dict) -> List[str]:
     result = []
     for _, e in _get_elements(from_clause, "from_expression"):
         table_ref = e["from_expression_element"]["table_expression"]["table_reference"]
-        if isinstance(table_ref, list):
-            table_ref = table_ref[-1]
         result.append(_get_reference_value(table_ref))
     return result
 
