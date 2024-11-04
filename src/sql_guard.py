@@ -82,29 +82,57 @@ def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
 def _verify_where_clause(result: _VerificationContext, statement: list):
     where_clause = _get_clause(statement, "where")
     if where_clause is None:
-        where_str = " WHERE "
-        for t in result.config["tables"]:
-            for r in t.get("restrictions", []):
-                where_str += f"{r['column']} = {r['value']}"
-                result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
-
-        for idx, e in enumerate(statement):
-            if isinstance(e, dict) and "from_clause" in e:
-                statement.insert(idx + 1, {"where_clause": where_str})
+        _build_restrictions(result, statement)
+        return
+    if isinstance(where_clause, dict):
+        updated_where_clause = [{k: v} for k, v in where_clause.items()]
+        where_clause.clear()
+        where_clause["updated"] = updated_where_clause
+        where_clause = updated_where_clause
+    sub_exps = []
+    for _, e in _get_elements(where_clause, "expression"):
+        if isinstance(e, dict):
+            sub_exps.append([e])
+        else:
+            sub_exps.extend(_split_expression(e, "AND"))
+    has_static_exp = False
+    for e in sub_exps:
+        for or_exp in _split_expression(e, "OR"):
+            has_ref_col = False
+            for _ in _get_elements(or_exp, "column_reference", True):
+                has_ref_col = True
                 break
-    else:
-        for t in result.config["tables"]:
-            for idx, r in enumerate(t.get("restrictions", [])):
-                found = False
-                for k, e in _get_elements(where_clause):
-                    if k == "expression":
-                        for sub_exp in _split_expression(e, "AND"):
-                            if _verify_restriction(r, sub_exp):
-                                found = True
-                                break
-                if not found:
-                    result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
-                    where_clause[f"{t}_{idx}"] = f" AND {r['column']} = {r['value']}"
+            if not has_ref_col:
+                has_static_exp = True
+                break
+    if has_static_exp:
+        result.add_error("Static expression is not allowed", False)
+        return
+    for t in result.config["tables"]:
+        for idx, r in enumerate(t.get("restrictions", [])):
+            found = False
+            for sub_exp in sub_exps:
+                if _verify_restriction(r, sub_exp, result):
+                    found = True
+                    break
+            if not found:
+                result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
+                where_clause.insert(1, {"opening_b": " ("})
+                where_clause.append({f"{t}_{idx}": f") AND {r['column']} = {r['value']}"})
+
+
+def _build_restrictions(result, statement):
+    where_str = " WHERE "
+    for t in result.config["tables"]:
+        for r in t.get("restrictions", []):
+            where_str += f"{r['column']} = {r['value']}"
+            result.add_error(
+                f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
+    for idx, e in enumerate(statement):
+        if isinstance(e, dict) and "from_clause" in e:
+            statement.insert(idx + 1, {"where_clause": where_str})
+            break
+
 
 def _split_expression(e: list, binary_operator: str) -> List[list]:
     result = []
@@ -161,27 +189,33 @@ def _quote_identifier(value: str) -> str:
     else:
         return value
 
-def _verify_restriction(restriction: dict, exp: list) -> bool:
+def _verify_restriction(restriction: dict, exp: list, result: _VerificationContext) -> bool:
     sub_exps = _split_expression(exp, "OR")
-    if len(sub_exps) > 1:
-        return False
+    found = False
     for sub_exp in sub_exps:
         columns_found = False
         op_found = False
         value_found = False
+        static_exp = True
         for e in sub_exp:
             if isinstance(e, dict):
                 if "column_reference" in e:
                     if _get_ref_col(e["column_reference"]).column_name == restriction["column"]:
                         columns_found = True
+                    static_exp = False
                 if "comparison_operator" in e:
                     if e["comparison_operator"]["raw_comparison_operator"] == "=":
                         op_found = True
                 if "numeric_literal" in e:
                     if int(e["numeric_literal"]) == restriction["value"]:
                         value_found = True
-                if columns_found and op_found and value_found:
-                    return True
+        if columns_found and op_found and value_found:
+            found = True
+        elif not static_exp:
+            found = False
+            break
+    return found
+
 
 
 def _verify_tables_and_columns(select_statement, config: dict) -> _VerificationContext:

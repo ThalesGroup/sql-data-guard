@@ -57,9 +57,9 @@ class TestSingleTable:
                           "fixed": "SELECT id FROM orders WHERE id = 123 GROUP BY id ORDER BY id"}
 
     def test_sql_with_where_and_group_by_and_order_by(self):
-        result = self.verify("SELECT id FROM orders WHERE TRUE GROUP BY id ORDER BY id")
+        result = self.verify("SELECT id FROM orders WHERE product_name='' GROUP BY id ORDER BY id")
         assert result == {'allowed': False,'errors': ['Missing restriction for table: orders column: id value: 123'],
-                          "fixed": "SELECT id FROM orders WHERE TRUE AND id = 123 GROUP BY id ORDER BY id"}
+                          "fixed": "SELECT id FROM orders WHERE ( product_name='') AND id = 123 GROUP BY id ORDER BY id"}
 
     def test_col_expression(self):
         result = self.verify("SELECT col + 1 FROM orders WHERE id = 123")
@@ -88,7 +88,7 @@ class TestSingleTable:
         result = self.verify("SELECT id FROM orders WHERE id = 234")
         assert result == {'allowed': False,
                           'errors': ["Missing restriction for table: orders column: id value: 123"],
-                          "fixed": "SELECT id FROM orders WHERE id = 234 AND id = 123"}
+                          "fixed": "SELECT id FROM orders WHERE ( id = 234) AND id = 123"}
 
     def test_table_and_database(self):
         result = self.verify("SELECT id FROM orders_db.orders AS o WHERE id = 123")
@@ -128,11 +128,18 @@ class TestSingleTable:
                           "fixed": None}
 
 
+    def test_bad_restriction(self):
+        result = self.verify("SELECT id FROM orders WHERE id = 123 OR id = 234")
+        assert result == {'allowed': False,
+                          'errors': ['Missing restriction for table: orders column: id value: 123'],
+                          "fixed": "SELECT id FROM orders WHERE ( id = 123 OR id = 234) AND id = 123"}
+
+
     def test_sql_injection(self):
         result = self.verify("SELECT id FROM orders WHERE id = 123 OR 1 = 1")
         assert result == {'allowed': False,
-                          'errors': ["Always-True expression is not allowed"],
-                          "fixed": "SELECT id FROM orders WHERE id = 123"}
+                          'errors': ['Static expression is not allowed'],
+                          "fixed": None}
 
 
 
