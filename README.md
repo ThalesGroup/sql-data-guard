@@ -1,4 +1,4 @@
-# sql-guard
+# SQL-Guard: Safety Layer for LLM Database Interactions
 
 sql-guard is an open-source project designed to verify that SQL queries access only the data they are allowed to. It takes a query and a restriction configuration, and returns whether the query is allowed to run or not. Additionally, it can modify the query to ensure it complies with the restrictions.
 

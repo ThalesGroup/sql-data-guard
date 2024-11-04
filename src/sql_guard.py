@@ -160,7 +160,7 @@ def _get_ref_table(e) -> _TableRef:
         if len(vals) == 2:
             return _TableRef(db_name=vals[0], table_name=vals[1])
         elif len(vals) == 3:
-            return _TableRef(db_name=vals[0], table_name=vals[1], alias=vals[2])
+            return _TableRef(db_name=vals[0], table_name=vals[1])
 
 
 def _get_ref_value(e: dict) -> str:
