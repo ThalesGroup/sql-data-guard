@@ -309,8 +309,11 @@ def _find_column(col_name: str, result: _VerificationContext) -> bool:
 
 def _update_from_clause_tables(from_clause: dict, result: _VerificationContext):
     for _, e in _get_elements(from_clause, "from_expression"):
-        table_ref = e["from_expression_element"]["table_expression"]["table_reference"]
-        result.add_from_table(_get_ref_table(table_ref))
+        for _, f in _get_elements(e, "from_expression_element", True):
+            table_ref = f["table_expression"]["table_reference"]
+            result.add_from_table(_get_ref_table(table_ref))
+
+
 
 
 def _get_elements(clause, name: str = None, recursive: bool = False) ->  Generator[Tuple[str, any], None, None]:

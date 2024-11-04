@@ -143,5 +143,29 @@ class TestSingleTable:
 
 
 
+class TestJoinTable:
 
+    @staticmethod
+    def verify(sql: str):
+        return verify_sql(sql,
+                        {
+                            "tables": [
+                                {
+                                    "table_name": "orders",
+                                    "database_name": "orders_db",
+                                    "columns": ["order_id", "account_id", "product_id"],
+                                    "restrictions": [{"column": "account_id", "value": 123}]
+                                },
+                                {
+                                    "table_name": "products",
+                                    "database_name": "orders_db",
+                                    "columns": ["product_id", "product_name"],
+                                }
+                            ]
+                        })
 
+    def test_using(self):
+        result = self.verify("SELECT order_id, account_id, product_name FROM orders INNER JOIN products USING (product_id) WHERE account_id = 123")
+        assert result == {'allowed': True,
+ 'errors': [],
+ 'fixed': None}
