@@ -2,14 +2,20 @@
 
 sql-guard is an open-source project designed to verify that SQL queries access only the data they are allowed to. It takes a query and a restriction configuration, and returns whether the query is allowed to run or not. Additionally, it can modify the query to ensure it complies with the restrictions.
 
+sql-guard is particularly useful when constructing SQL queries in applications, especially when using Large Language Models (LLMs) to generate queries. By verifying and modifying queries before they are executed, sql-guard helps prevent unauthorized data access and accidental data exposure. Adding sql-guard to your application can prevent or minimize data breaches and sql-injection attacks impact, ensuring that only permitted data is accessed. 
+
+Connecting LLMs to SQL databases without strict controls can risk accidental data exposure, as models may generate SQL queries that access sensitive information. OWASP highlights cases of poor sandboxing leading to unauthorized disclosures, emphasizing the need for clear access controls and prompt validation. Businesses should adopt rigorous access restrictions, regular audits, and robust API security, especially to comply with privacy laws like GDPR and CCPA, which penalize unauthorized data exposure.
+
 ## Why Use sql-guard?
 
-Consider using sql-guard if your application constructs SQL queries and you need to ensure that only permitted data is accessed. This is particularly beneficial if:
+Consider using sql-guard if your application constructs SQL queries, and you need to ensure that only permitted data is accessed. This is particularly beneficial if:
 - Your application generates complex SQL queries.
 - Your application employs LLM (Large Language Models) to create SQL queries, making it difficult to fully control the queries.
-- Different application users should have different permissions, and it is often hard to correlate an application user or role with a database user or role.
+- Different application users and roles should have different permissions, and you need to correlate an application user or role with a fine-grained data access permission.
+- In multi-tenant applications, you need to ensure that each tenant can access only their data, which requires row-level security and often cannot be done using the database permissions model.
 
-sql-guard does not replace the database permissions model. Instead, it adds an extra layer of security, which is crucial when implementing fine-grained, column-level, and row-level security is challenging or impossible. Data restrictions are often complex and cannot be expressed by the database permissions model. For instance, you may need to restrict access to specific columns or rows based on intricate business logic, which many database implementations do not support. Instead of relying on the database to enforce these restrictions, sql-guard helps you overcome vendor-specific limitations by verifying and modifying queries before they are executed.
+sql-guard does not replace the database permissions model. Instead, it adds an extra layer of security, which is crucial when implementing fine-grained, column-level, and row-level security is challenging or impossible. 
+Data restrictions are often complex and cannot be expressed by the database permissions model. For instance, you may need to restrict access to specific columns or rows based on intricate business logic, which many database implementations do not support. Instead of relying on the database to enforce these restrictions, sql-guard helps you overcome vendor-specific limitations by verifying and modifying queries before they are executed.
 
 ## How It Works
 
@@ -17,6 +23,8 @@ sql-guard does not replace the database permissions model. Instead, it adds an e
 2. **Verification**: It verifies whether the query complies with the restrictions specified in the configuration.
 3. **Modification**: If the query does not comply, sql-guard can modify the query to ensure it meets the restrictions.
 4. **Output**: It returns whether the query is allowed to run or not, and if necessary, the modified query.
+
+sql-guard is designed to be easy to integrate into your application. It provides a simple API that you can call to verify and modify SQL queries before they are executed. You can integrate it using REST API or directly in your application code. 
 
 ## Example
 
