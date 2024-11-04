@@ -203,9 +203,8 @@ def _verify_restriction(restriction: dict, exp: list, result: _VerificationConte
                     if _get_ref_col(e["column_reference"]).column_name == restriction["column"]:
                         columns_found = True
                     static_exp = False
-                if "comparison_operator" in e:
-                    if e["comparison_operator"]["raw_comparison_operator"] == "=":
-                        op_found = True
+                if "comparison_operator" in e and _convert_to_text(e) == '=':
+                    op_found = True
                 if "numeric_literal" in e:
                     if int(e["numeric_literal"]) == restriction["value"]:
                         value_found = True
