@@ -95,18 +95,7 @@ def _verify_where_clause(result: _VerificationContext, statement: list):
             sub_exps.append([e])
         else:
             sub_exps.extend(_split_expression(e, "AND"))
-    has_static_exp = False
-    for e in sub_exps:
-        for or_exp in _split_expression(e, "OR"):
-            has_ref_col = False
-            for _ in _get_elements(or_exp, "column_reference", True):
-                has_ref_col = True
-                break
-            if not has_ref_col:
-                has_static_exp = True
-                break
-    if has_static_exp:
-        result.add_error("Static expression is not allowed", False)
+    if not _verify_static_expression(result, sub_exps):
         return
     for t in result.config["tables"]:
         for idx, r in enumerate(t.get("restrictions", [])):
@@ -119,6 +108,22 @@ def _verify_where_clause(result: _VerificationContext, statement: list):
                 result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
                 where_clause.insert(1, {"opening_b": " ("})
                 where_clause.append({f"{t}_{idx}": f") AND {r['column']} = {r['value']}"})
+
+
+def _verify_static_expression(result: _VerificationContext, sub_exps: list) -> bool:
+    has_static_exp = False
+    for e in sub_exps:
+        for or_exp in _split_expression(e, "OR"):
+            has_ref_col = False
+            for _ in _get_elements(or_exp, "column_reference", True):
+                has_ref_col = True
+                break
+            if not has_ref_col:
+                has_static_exp = True
+                break
+    if has_static_exp:
+        result.add_error("Static expression is not allowed", False)
+    return not has_static_exp
 
 
 def _build_restrictions(result, statement):
