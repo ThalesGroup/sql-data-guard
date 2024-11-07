@@ -1,4 +1,4 @@
-from sql_guard import verify_sql
+from sql_data_guard import verify_sql
 
 class TestSQLErrors:
     def test_basic_sql_error(self):
