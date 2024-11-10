@@ -1,12 +1,9 @@
 import logging
-import os
-from logging.config import fileConfig
-from typing import Optional, List, Tuple, Generator, NamedTuple
+from typing import Optional, List, Tuple, Generator, NamedTuple, Set
 
 import sqlfluff
 from sqlfluff.api import APIParsingError
 
-fileConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), "logging.conf"))
 
 class _TableRef(NamedTuple):
     table_name: str
@@ -26,8 +23,8 @@ class _VerificationContext:
         self._can_fix = True
         self._errors = []
         self._fixed = None
-        self._from_tables = []
         self._config = config
+        self._dynamic_tables: Set[str] = set()
 
     @property
     def can_fix(self) -> bool:
@@ -50,16 +47,14 @@ class _VerificationContext:
     def fixed(self, value: Optional[str]):
         self._fixed = value
 
-    def add_from_table(self, t: _TableRef):
-        self._from_tables.append(t)
-
-    @property
-    def from_tables(self) -> List[_TableRef]:
-        return self._from_tables
 
     @property
     def config(self) -> dict:
         return self._config
+
+    @property
+    def dynamic_tables(self) -> Set[str]:
+        return self._dynamic_tables
 
 
 def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
@@ -70,19 +65,25 @@ def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
             if "statement" in s and "select_statement" in s["statement"]:
                 sql_statement = s["statement"]["select_statement"]
                 break
+            if "statement" in s and "with_compound_statement" in s["statement"]:
+                sql_statement = s["statement"]["with_compound_statement"]
+                break
     except APIParsingError as e:
         logging.error(f"SQL: {sql}\nError parsing SQL: {e}")
         return { "allowed": False, "errors": [e.msg]}
     if sql_statement is None:
         return {"allowed": False, "errors": ["Could not find a select statement"]}
-    result = _verify_tables_and_columns(sql_statement, config)
+    result = _VerificationContext(config)
+    sql_statement = _verify_statement(sql_statement, result)
+    if result.can_fix and len(result.errors) > 0:
+        result.fixed = _convert_to_text(sql_statement)
     return { "allowed": len(result.errors) == 0, "errors": result.errors, "fixed": result.fixed }
 
 
-def _verify_where_clause(result: _VerificationContext, statement: list):
+def _verify_where_clause(result: _VerificationContext, statement: list, from_tables: List[_TableRef]):
     where_clause = _get_clause(statement, "where")
     if where_clause is None:
-        _build_restrictions(result, statement)
+        _build_restrictions(result, statement, from_tables)
         return
     if isinstance(where_clause, dict):
         updated_where_clause = [{k: v} for k, v in where_clause.items()]
@@ -97,11 +98,11 @@ def _verify_where_clause(result: _VerificationContext, statement: list):
             sub_exps.extend(_split_expression(e, "AND"))
     if not _verify_static_expression(result, sub_exps):
         return
-    for t in result.config["tables"]:
+    for t in [c_t for c_t in result.config["tables"] if c_t["table_name"] in [t.table_name for t in from_tables]]:
         for idx, r in enumerate(t.get("restrictions", [])):
             found = False
             for sub_exp in sub_exps:
-                if _verify_restriction(r, sub_exp, result):
+                if _verify_restriction(r, sub_exp):
                     found = True
                     break
             if not found:
@@ -126,9 +127,11 @@ def _verify_static_expression(result: _VerificationContext, sub_exps: list) -> b
     return not has_static_exp
 
 
-def _build_restrictions(result, statement):
+def _build_restrictions(result: _VerificationContext, statement, from_tables: List[_TableRef]):
+    if all(t.table_name in result.dynamic_tables for t in from_tables):
+        return
     where_str = " WHERE "
-    for t in result.config["tables"]:
+    for t in [c_t for c_t in result.config["tables"] if c_t["table_name"] in [t.table_name for t in from_tables]]:
         for r in t.get("restrictions", []):
             where_str += f"{r['column']} = {r['value']}"
             result.add_error(
@@ -194,7 +197,7 @@ def _quote_identifier(value: str) -> str:
     else:
         return value
 
-def _verify_restriction(restriction: dict, exp: list, result: _VerificationContext) -> bool:
+def _verify_restriction(restriction: dict, exp: list) -> bool:
     sub_exps = _split_expression(exp, "OR")
     found = False
     for sub_exp in sub_exps:
@@ -221,37 +224,51 @@ def _verify_restriction(restriction: dict, exp: list, result: _VerificationConte
     return found
 
 
+def _verify_statement(statement, result: _VerificationContext) -> list:
+    if isinstance(statement, dict):
+        statement = [{k: statement[k]} for k in statement]
+    if len(statement) > 0 and statement[0].get("keyword", "") == "WITH":
+        for s in statement:
+            if "common_table_expression" in s:
+                for sub_s in s["common_table_expression"]:
+                    if "naked_identifier" in sub_s:
+                        result.dynamic_tables.add(sub_s["naked_identifier"])
+                    if "bracketed" in sub_s and "select_statement" in sub_s["bracketed"]:
+                        sub_s["bracketed"]["select_statement"] = _verify_select_statement(sub_s["bracketed"]["select_statement"], result)
+            if "select_statement" in s:
+                s["select_statement"] = _verify_statement(s["select_statement"], result)
+    else:
+        _verify_select_statement(statement, result)
+    return statement
 
-def _verify_tables_and_columns(select_statement, config: dict) -> _VerificationContext:
-    result = _VerificationContext(config)
+def _verify_select_statement(select_statement, result: _VerificationContext) -> list:
     if isinstance(select_statement, dict):
         select_statement = [{k: select_statement[k]} for k in select_statement]
+
     from_clause = _get_clause(select_statement, "from")
-    _update_from_clause_tables(from_clause, result)
-    for t in result.from_tables:
+    from_tables = _get_from_clause_tables(from_clause)
+    for t in from_tables:
         found = False
         for config_t in result.config["tables"]:
-            if t.table_name == config_t["table_name"]:
+            if t.table_name == config_t["table_name"] or t.table_name in result.dynamic_tables:
                 found = True
         if not found:
             result.add_error(f"Table {t.table_name} is not allowed", False)
     if not result.can_fix:
-        return result
+        return select_statement
     select_clause = _get_clause(select_statement, "select")
-    _verify_select_clause(result, select_clause)
-    _verify_where_clause(result, select_statement)
-    if result.can_fix and len(result.errors) > 0:
-        result.fixed = _convert_to_text(select_statement)
-    return result
+    _verify_select_clause(result, select_clause, from_tables)
+    _verify_where_clause(result, select_statement, from_tables)
+    return select_statement
 
 
-def _verify_select_clause(result: _VerificationContext, select_clause: list):
+def _verify_select_clause(result: _VerificationContext, select_clause: list, from_tables: List[_TableRef]):
     updated_select_clause = []
     has_legal_elements = False
     is_first_element = True
     for e_name, e in _get_elements(select_clause):
         if e_name == "select_clause_element":
-            if _verify_select_clause_element(result, e):
+            if _verify_select_clause_element(from_tables, result, e):
                 if not is_first_element and not has_legal_elements:
                     while len(updated_select_clause) > 0 and isinstance(updated_select_clause[-1], str):
                         updated_select_clause.pop()
@@ -274,12 +291,12 @@ def _verify_select_clause(result: _VerificationContext, select_clause: list):
         else:
             select_clause.extend(updated_select_clause)
 
-def _verify_select_clause_element(result: _VerificationContext, e: list):
+def _verify_select_clause_element(from_tables: List[_TableRef], result: _VerificationContext, e: list):
     for el_name, el in _get_elements(e):
         if el_name == "wildcard_expression" and el.get("wildcard_identifier", {}).get("star", "") == "*":
             result.add_error("SELECT * is not allowed", True)
             sql_cols = ""
-            for t in result.from_tables:
+            for t in from_tables:
                 for config_t in result.config["tables"]:
                     if t.table_name == config_t["table_name"]:
                         for c in config_t["columns"]:
@@ -289,22 +306,24 @@ def _verify_select_clause_element(result: _VerificationContext, e: list):
             return True
         elif el_name == "column_reference":
             col_name = _get_ref_col(el).column_name
-            if not _find_column(col_name, result):
+            if not _find_column(col_name, from_tables, result):
                 result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
                 return False
         elif el_name in ["expression", "function"]:
             error_found = False
             for _, r_e in _get_elements(el, "column_reference", True):
                 col_name = _get_ref_col(r_e).column_name
-                if not _find_column(col_name, result):
+                if not _find_column(col_name, from_tables, result):
                     result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
                     error_found = True
             return not error_found
     return True
 
 
-def _find_column(col_name: str, result: _VerificationContext) -> bool:
-    for t in result.from_tables:
+def _find_column(col_name: str, from_tables: List[_TableRef], result: _VerificationContext) -> bool:
+    if all(t.table_name in result.dynamic_tables for t in from_tables):
+        return True
+    for t in from_tables:
         for config_t in result.config["tables"]:
             if t.table_name == config_t["table_name"]:
                 if col_name in config_t["columns"]:
@@ -312,11 +331,13 @@ def _find_column(col_name: str, result: _VerificationContext) -> bool:
     return False
 
 
-def _update_from_clause_tables(from_clause: dict, result: _VerificationContext):
+def _get_from_clause_tables(from_clause: dict) -> List[_TableRef]:
+    result = []
     for _, e in _get_elements(from_clause, "from_expression"):
         for _, f in _get_elements(e, "from_expression_element", True):
             table_ref = f["table_expression"]["table_reference"]
-            result.add_from_table(_get_ref_table(table_ref))
+            result.append(_get_ref_table(table_ref))
+    return result
 
 
 

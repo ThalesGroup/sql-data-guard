@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from sqlite3 import Connection
 
@@ -6,11 +7,14 @@ import pytest
 from sql_data_guard import verify_sql
 
 
+@pytest.fixture(autouse=True)
+def pytest_configure():
+    logging.getLogger('sqlfluff').setLevel(logging.WARNING)
+
 def _test_sql(sql: str, config: dict, errors: list = None, fix: str = None, dialect: str = "sqlite",
               cnn: Connection = None, data: list = None):
     result = verify_sql(sql, config, dialect)
     if errors is None:
-        assert result["allowed"] == True
         assert result["errors"] == []
     else:
         assert result["errors"] == errors
@@ -19,7 +23,7 @@ def _test_sql(sql: str, config: dict, errors: list = None, fix: str = None, dial
         sql_to_use = sql
 
     else:
-        assert fix == result["fixed"]
+        assert result["fixed"] == fix
         sql_to_use = result["fixed"]
     if cnn:
         fetched_data = cnn.execute(sql_to_use).fetchall()
@@ -142,6 +146,17 @@ class TestSingleTable:
     def test_sql_injection(self, config):
         _test_sql("SELECT id FROM orders WHERE id = 123 OR 1 = 1", config,
                   errors=["Static expression is not allowed"])
+
+    def test_with_clause(self, config, cnn):
+        _test_sql("WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data", config,
+                  cnn=cnn, data=[(123,)])
+
+    def test_with_clause_missing_restriction(self, config, cnn):
+        _test_sql("WITH data AS (SELECT id FROM orders) SELECT id FROM data", config,
+                    errors=["Missing restriction for table: orders column: id value: 123"],
+                  fix="WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data",
+                  cnn=cnn, data=[(123,)])
+
 
 
 
