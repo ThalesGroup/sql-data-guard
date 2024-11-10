@@ -1,9 +1,13 @@
+import sqlite3
+from sqlite3 import Connection
+
 import pytest
 
 from sql_data_guard import verify_sql
 
 
-def _test_sql(sql: str, config: dict, errors: list = None, fix: str = None, dialect: str = "sqlite"):
+def _test_sql(sql: str, config: dict, errors: list = None, fix: str = None, dialect: str = "sqlite",
+              cnn: Connection = None, data: list = None):
     result = verify_sql(sql, config, dialect)
     if errors is None:
         assert result["allowed"] == True
@@ -12,8 +16,17 @@ def _test_sql(sql: str, config: dict, errors: list = None, fix: str = None, dial
         assert result["errors"] == errors
     if fix is None:
         assert result["fixed"] is None
+        sql_to_use = sql
+
     else:
         assert fix == result["fixed"]
+        sql_to_use = result["fixed"]
+    if cnn:
+        fetched_data = cnn.execute(sql_to_use).fetchall()
+        if data is not None:
+            assert fetched_data == data
+
+
 
 
 class TestSQLErrors:
@@ -25,7 +38,7 @@ class TestSQLErrors:
 
 class TestSingleTable:
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def config(self) -> dict:
         return { "tables": [
                     {
@@ -37,6 +50,14 @@ class TestSingleTable:
                 ]
             }
 
+    @pytest.fixture(scope="class")
+    def cnn(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.execute("CREATE TABLE orders (id INT, product_name TEXT, account_id INT)")
+            conn.execute("INSERT INTO orders VALUES (123, 'product1', 123)")
+            conn.execute("INSERT INTO orders VALUES (124, 'product2', 124)")
+            yield conn
+
     def test_select_illegal_table(self, config):
         _test_sql("SELECT * FROM users", config, errors=["Table users is not allowed"])
 
@@ -44,21 +65,23 @@ class TestSingleTable:
         _test_sql("SELECT col1 FROM users AS u1, products AS p1", config,
                   errors=["Table users is not allowed", "Table products is not allowed"])
 
-    def test_select_star(self, config):
+    def test_select_star(self, config, cnn):
         _test_sql("SELECT * FROM orders WHERE id = 123", config, errors=["SELECT * is not allowed"],
-                  fix="SELECT id, product_name, account_id FROM orders WHERE id = 123")
+                  fix="SELECT id, product_name, account_id FROM orders WHERE id = 123",
+                  cnn=cnn, data=[(123, "product1", 123)])
 
-    def test_two_cols(self, config):
-        _test_sql("SELECT id, product_name FROM orders WHERE id = 123", config)
+    def test_two_cols(self, config, cnn):
+        _test_sql("SELECT id, product_name FROM orders WHERE id = 123", config, cnn=cnn, data=[(123, 'product1')])
 
 
-    def test_quote_and_alias(self, config):
-        _test_sql('SELECT "id" AS my_id FROM orders WHERE id = 123', config)
+    def test_quote_and_alias(self, config, cnn):
+        _test_sql('SELECT "id" AS my_id FROM orders WHERE id = 123', config, cnn=cnn, data=[(123,)])
 
-    def test_sql_with_group_by_and_order_by(self, config):
+    def test_sql_with_group_by_and_order_by(self, config, cnn):
         _test_sql("SELECT id FROM orders GROUP BY id ORDER BY id", config,
                   errors=["Missing restriction for table: orders column: id value: 123"],
-                  fix="SELECT id FROM orders WHERE id = 123 GROUP BY id ORDER BY id")
+                  fix="SELECT id FROM orders WHERE id = 123 GROUP BY id ORDER BY id",
+                  cnn=cnn, data=[(123,)])
 
     def test_sql_with_where_and_group_by_and_order_by(self, config):
         _test_sql("SELECT id FROM orders WHERE product_name='' GROUP BY id ORDER BY id",config,
