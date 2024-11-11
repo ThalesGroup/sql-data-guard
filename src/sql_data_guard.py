@@ -227,7 +227,7 @@ def _verify_restriction(restriction: dict, exp: list) -> bool:
 def _verify_statement(statement, result: _VerificationContext) -> list:
     if isinstance(statement, dict):
         statement = [{k: statement[k]} for k in statement]
-    if len(statement) > 0 and statement[0].get("keyword", "") == "WITH":
+    if len(statement) > 0 and statement[0].get("keyword", "").upper() == "WITH":
         for s in statement:
             if "common_table_expression" in s:
                 for sub_s in s["common_table_expression"]:
@@ -235,6 +235,8 @@ def _verify_statement(statement, result: _VerificationContext) -> list:
                         result.dynamic_tables.add(sub_s["naked_identifier"])
                     if "bracketed" in sub_s and "select_statement" in sub_s["bracketed"]:
                         sub_s["bracketed"]["select_statement"] = _verify_select_statement(sub_s["bracketed"]["select_statement"], result)
+                    if "bracketed" in sub_s and "with_compound_statement" in sub_s["bracketed"]:
+                        sub_s["bracketed"]["with_compound_statement"] = _verify_statement(sub_s["bracketed"]["with_compound_statement"], result)
             if "select_statement" in s:
                 s["select_statement"] = _verify_statement(s["select_statement"], result)
     else:

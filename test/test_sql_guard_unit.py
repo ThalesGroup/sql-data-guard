@@ -21,7 +21,6 @@ def _test_sql(sql: str, config: dict, errors: list = None, fix: str = None, dial
     if fix is None:
         assert result["fixed"] is None
         sql_to_use = sql
-
     else:
         assert result["fixed"] == fix
         sql_to_use = result["fixed"]
@@ -151,14 +150,22 @@ class TestSingleTable:
         _test_sql("WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data", config,
                   cnn=cnn, data=[(123,)])
 
+    def test_nested_with_clause(self, config, cnn):
+        _test_sql("WITH data AS (WITH sub_data AS (SELECT id FROM orders) SELECT id FROM sub_data) SELECT id FROM data", config,
+                  errors=["Missing restriction for table: orders column: id value: 123"],
+                  fix="WITH data AS (WITH sub_data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM sub_data) SELECT id FROM data",
+                  cnn=cnn, data=[(123,)])
+
+
     def test_with_clause_missing_restriction(self, config, cnn):
         _test_sql("WITH data AS (SELECT id FROM orders) SELECT id FROM data", config,
                     errors=["Missing restriction for table: orders column: id value: 123"],
                   fix="WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data",
                   cnn=cnn, data=[(123,)])
 
-
-
+    def test_lowercase(self, config, cnn):
+        _test_sql("with data as (select id from orders as o where id = 123) select id from data",
+                  config, [], cnn=cnn, data=[(123,)])
 
 
 class TestJoinTable:
