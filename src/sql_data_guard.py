@@ -45,7 +45,7 @@ class _VerificationContext:
     def __init__(self, config: dict):
         super().__init__()
         self._can_fix = True
-        self._errors = []
+        self._errors = set()
         self._fixed = None
         self._config = config
         self._dynamic_tables: Set[str] = set()
@@ -55,12 +55,12 @@ class _VerificationContext:
         return self._can_fix
 
     def add_error(self, error: str, can_fix: bool = True):
-        self._errors.append(error)
+        self._errors.add(error)
         if not can_fix:
             self._can_fix = False
 
     @property
-    def errors(self) -> List[str]:
+    def errors(self) -> Set[str]:
         return self._errors
 
     @property
@@ -224,7 +224,10 @@ def _get_ref_col(e) -> _ColumnRef:
     if isinstance(e, dict):
         return _ColumnRef(column_name=_get_ref_value(e))
     elif isinstance(e, list):
-        return _get_ref_col(e[-1])
+        if len(e) == 3:
+            return _ColumnRef(table_name=_get_ref_value(e[0]), column_name=_get_ref_value(e[-1]))
+        else:
+            return _get_ref_col(e[-1])
 
 def _created_reference_value(value: str) -> dict:
     return {"quoted_identifier": _quote_identifier(value)}
@@ -286,7 +289,7 @@ def _verify_select_statement(select_statement, result: _VerificationContext) -> 
         select_statement = [{k: select_statement[k]} for k in select_statement]
 
     from_clause = _get_clause(select_statement, "from")
-    from_tables = _get_from_clause_tables(from_clause)
+    from_tables = _get_from_clause_tables(from_clause, result)
     for t in from_tables:
         found = False
         for config_t in result.config["tables"]:
@@ -345,9 +348,11 @@ def _verify_select_clause_element(from_tables: List[_TableRef], result: _Verific
             el.get("wildcard_identifier")["star"] = sql_cols
             return True
         elif el_name == "column_reference":
-            col_name = _get_ref_col(el).column_name
-            if not _find_column(col_name, from_tables, result):
-                result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
+            ref_col = _get_ref_col(el)
+            if ref_col.table_name and ref_col.table_name in result.dynamic_tables:
+                pass
+            elif not _find_column(ref_col.column_name, from_tables, result):
+                result.add_error(f"Column {ref_col.column_name} is not allowed. Column removed from SELECT clause")
                 return False
         elif el_name in ["expression", "function"]:
             error_found = False
@@ -371,12 +376,15 @@ def _find_column(col_name: str, from_tables: List[_TableRef], result: _Verificat
     return False
 
 
-def _get_from_clause_tables(from_clause: dict) -> List[_TableRef]:
+def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) -> List[_TableRef]:
     result = []
     for _, e in _get_elements(from_clause, "from_expression"):
         for _, f in _get_elements(e, "from_expression_element", True):
-            table_ref = f["table_expression"]["table_reference"]
-            result.append(_get_ref_table(table_ref))
+            table_ref = f["table_expression"].get("table_reference")
+            if table_ref:
+                result.append(_get_ref_table(table_ref))
+            elif "alias_expression" in f:
+                context.dynamic_tables.add(_get_ref_value(f["alias_expression"]))
     return result
 
 

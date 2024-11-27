@@ -15,9 +15,9 @@ def _test_sql(sql: str, config: dict, errors: list = None, fix: str = None, dial
               cnn: Connection = None, data: list = None):
     result = verify_sql(sql, config, dialect)
     if errors is None:
-        assert result["errors"] == []
+        assert result["errors"] == set()
     else:
-        assert result["errors"] == errors
+        assert result["errors"] == set(errors)
     if fix is None:
         assert result["fixed"] is None
         sql_to_use = sql
@@ -166,6 +166,17 @@ class TestSingleTable:
     def test_lowercase(self, config, cnn):
         _test_sql("with data as (select id from orders as o where id = 123) select id from data",
                   config, [], cnn=cnn, data=[(123,)])
+
+    def test_sub_select(self, config, cnn):
+        _test_sql("SELECT id, sub_select.col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
+                  config, cnn=cnn, data=[(123, 1)])
+
+    def test_sub_select_access_col_without_prefix(self, config, cnn):
+        _test_sql("SELECT id, col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
+                  config, errors=['Column col is not allowed. Column removed from SELECT clause'],
+                  fix="SELECT id FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",)
+
+
 
 
 class TestJoinTable:
