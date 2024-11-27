@@ -6,18 +6,42 @@ from sqlfluff.api import APIParsingError
 
 
 class _TableRef(NamedTuple):
+    """
+    Represents a reference to a table in the SQL query.
+
+    Attributes:
+        table_name (str): The name of the table.
+        db_name (Optional[str]): The name of the database. Defaults to None.
+    """
     table_name: str
-    db_name: str = None
+    db_name: Optional[str] = None
+
 
 class _ColumnRef(NamedTuple):
-    column_name: str
-    table_name: str = None
-    db_name: str = None
+    """
+    Represents a reference to a column in the SQL query.
 
+    Attributes:
+        column_name (str): The name of the column.
+        table_name (Optional[str]): The name of the table. Defaults to None.
+        db_name (Optional[str]): The name of the database. Defaults to None.
+    """
+    column_name: str
+    table_name: Optional[str] = None
+    db_name: Optional[str] = None
 
 
 class _VerificationContext:
+    """
+    Context for verifying SQL queries against a given configuration.
 
+    Attributes:
+        _can_fix (bool): Indicates if the query can be fixed.
+        _errors (List[str]): List of errors found during verification.
+        _fixed (Optional[str]): The fixed query if modifications were made.
+        _config (dict): The configuration used for verification.
+        _dynamic_tables (Set[str]): Set of dynamic tables found in the query, like sub select and WITH clauses.
+    """
     def __init__(self, config: dict):
         super().__init__()
         self._can_fix = True
@@ -58,6 +82,20 @@ class _VerificationContext:
 
 
 def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
+    """
+    Verifies an SQL query against a given configuration and optionally fixes it.
+
+    Args:
+        sql (str): The SQL query to verify.
+        config (dict): The configuration specifying allowed tables, columns, and restrictions.
+        dialect (str, optional): The SQL dialect to use for parsing. Defaults to "ansi".
+
+    Returns:
+        dict: A dictionary containing:
+            - "allowed" (bool): Whether the query is allowed to run.
+            - "errors" (List[str]): List of errors found during verification.
+            - "fixed" (Optional[str]): The fixed query if modifications were made.
+    """
     try:
         sql_statement = None
         parse_tree = sqlfluff.parse(sql, dialect=dialect)

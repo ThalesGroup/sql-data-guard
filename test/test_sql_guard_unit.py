@@ -188,7 +188,23 @@ class TestJoinTable:
                 ]
         }
 
-    def test_using(self, config):
+    def test_inner_join_using(self, config):
         _test_sql("SELECT order_id, account_id, product_name "
                       "FROM orders INNER JOIN products USING (product_id) WHERE account_id = 123",
                   config)
+
+    def test_inner_join_on(self, config):
+        _test_sql("SELECT order_id, account_id, product_name "
+                      "FROM orders INNER JOIN products ON orders.product_id = products.product_id "
+                      "WHERE account_id = 123",
+                  config)
+
+    def test_access_to_unrestricted_columns_two_tables(self, config):
+        _test_sql("SELECT order_id, orders.name, products.price "
+                      "FROM orders INNER JOIN products ON orders.product_id = products.product_id "
+                      "WHERE account_id = 123", config,
+                  errors=['Column name is not allowed. Column removed from SELECT clause',
+                          'Column price is not allowed. Column removed from SELECT clause'],
+                  fix="SELECT order_id "
+                      "FROM orders INNER JOIN products ON orders.product_id = products.product_id "
+                      "WHERE account_id = 123")
