@@ -41,14 +41,16 @@ class _VerificationContext:
         _fixed (Optional[str]): The fixed query if modifications were made.
         _config (dict): The configuration used for verification.
         _dynamic_tables (Set[str]): Set of dynamic tables found in the query, like sub select and WITH clauses.
+        _dialect (str): The SQL dialect to use for parsing.
     """
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, dialect: str):
         super().__init__()
         self._can_fix = True
         self._errors = set()
         self._fixed = None
         self._config = config
         self._dynamic_tables: Set[str] = set()
+        self._dialect = dialect
 
     @property
     def can_fix(self) -> bool:
@@ -79,6 +81,10 @@ class _VerificationContext:
     @property
     def dynamic_tables(self) -> Set[str]:
         return self._dynamic_tables
+
+    @property
+    def dialect(self) -> str:
+        return self._dialect
 
 
 def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
@@ -111,7 +117,7 @@ def verify_sql(sql: str, config: dict, dialect: str = "ansi") -> dict:
         return { "allowed": False, "errors": [e.msg]}
     if sql_statement is None:
         return {"allowed": False, "errors": ["Could not find a select statement"]}
-    result = _VerificationContext(config)
+    result = _VerificationContext(config, dialect)
     sql_statement = _verify_statement(sql_statement, result)
     if result.can_fix and len(result.errors) > 0:
         result.fixed = _convert_to_text(sql_statement)
@@ -348,21 +354,58 @@ def _verify_select_clause_element(from_tables: List[_TableRef], result: _Verific
             el.get("wildcard_identifier")["star"] = sql_cols
             return True
         elif el_name == "column_reference":
-            ref_col = _get_ref_col(el)
-            if ref_col.table_name and ref_col.table_name in result.dynamic_tables:
-                pass
-            elif not _find_column(ref_col.column_name, from_tables, result):
-                result.add_error(f"Column {ref_col.column_name} is not allowed. Column removed from SELECT clause")
+            if not _verify_col(_get_ref_col(el), from_tables, result):
                 return False
-        elif el_name in ["expression", "function"]:
+        elif el_name == "expression":
             error_found = False
-            for _, r_e in _get_elements(el, "column_reference", True):
-                col_name = _get_ref_col(r_e).column_name
-                if not _find_column(col_name, from_tables, result):
-                    result.add_error(f"Column {col_name} is not allowed. Column removed from SELECT clause")
-                    error_found = True
+            for e in el.values() if isinstance(el, dict) else el:
+                if isinstance(e, dict) or isinstance(e, list):
+                    if not _verify_select_clause_element(from_tables, result, e):
+                        error_found = True
+            return not error_found
+        elif el_name ==  "function":
+            if "function_contents" in el:
+                content = el["function_contents"]["bracketed"]
+            else:
+                content = el["bracketed"]
+            error_found = False
+            max_param_index = _get_max_param_index(el["function_name"]["function_name_identifier"], el, result.dialect)
+            param_index = 0
+            for e in content.values() if isinstance(content, dict) else content:
+                if isinstance(e, dict) or isinstance(e, list):
+                    if not _verify_select_clause_element(from_tables, result, e):
+                        error_found = True
+                if e == {"comma": ","}:
+                    param_index += 1
+                    if param_index == max_param_index:
+                        break
             return not error_found
     return True
+
+def _verify_col(ref_col: _ColumnRef, from_tables: List[_TableRef], context: _VerificationContext) -> bool:
+    if ref_col.table_name and ref_col.table_name in context.dynamic_tables:
+        pass
+    elif not _find_column(ref_col.column_name, from_tables, context):
+        context.add_error(f"Column {ref_col.column_name} is not allowed. Column removed from SELECT clause")
+        return False
+    return True
+
+
+_TRINO_FUNCTION_MAX_PARAM_1 = {"REDUCE", "TRANSFORM", "TRANSFORM_KEYS", "TRANSFORM_VALUES", "MAP_FILTER", "FILTER",
+                               "ALL_MATCH", "ANY_MATCH", "NONE_MATCH"}
+
+def _get_max_param_index(func_name: str, el: dict, dialect: str) -> int:
+    """
+    Get the number of parameters for a function to search in for column reference
+    :param func_name: function name
+    :param el: function element
+    :param dialect: sql dialect
+    :return: -1 if all parameters should be checked, 0 if no parameters should be checked, or max index  parameter to check
+    """
+    if dialect in {"trino", "athena"}:
+        if func_name.upper() in _TRINO_FUNCTION_MAX_PARAM_1:
+            return 1
+    return -1
 
 
 def _find_column(col_name: str, from_tables: List[_TableRef], result: _VerificationContext) -> bool:
@@ -390,22 +433,23 @@ def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) ->
 
 
 
-def _get_elements(clause, name: str = None, recursive: bool = False) ->  Generator[Tuple[str, any], None, None]:
-    if isinstance(clause, dict):
-        for k, v in clause.items():
+def _get_elements(clause, name: str = None, recursive: bool = False,
+                  max_param_index: int = -1) ->  Generator[Tuple[str, any], None, None]:
+    p_index = 0
+    for e in clause if isinstance(clause, list) else [clause]:
+        for k, v in e.items():
             if name is None or name == k:
                 yield k, v
+            if k == "comma":
+                p_index += 1
+                if p_index == max_param_index:
+                    break
             if recursive:
-                for e in _get_elements(v, name, recursive):
-                    yield e
-    elif isinstance(clause, list):
-        for e in clause:
-            for k, v in e.items():
-                if name is None or name == k:
-                    yield k, v
-                if recursive:
+                if isinstance(v, list) or isinstance(v, dict):
                     for ek in _get_elements(v, name, recursive):
                         yield ek
+        if p_index == max_param_index:
+            break
 
 
 def _get_clause(clause: list, name: str):

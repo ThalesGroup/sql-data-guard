@@ -171,6 +171,10 @@ class TestSingleTable:
         _test_sql("SELECT id, sub_select.col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
                   config, cnn=cnn, data=[(123, 1)])
 
+    def test_sub_select_expression(self, config, cnn):
+        _test_sql("SELECT id, 1 + (1 + sub_select.col) FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
+                  config, cnn=cnn, data=[(123, 3)])
+
     def test_sub_select_access_col_without_prefix(self, config, cnn):
         _test_sql("SELECT id, col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
                   config, errors=['Column col is not allowed. Column removed from SELECT clause'],
@@ -219,3 +223,37 @@ class TestJoinTable:
                   fix="SELECT order_id "
                       "FROM orders INNER JOIN products ON orders.product_id = products.product_id "
                       "WHERE account_id = 123")
+
+class TestTrino:
+    @pytest.fixture(scope="class")
+    def config(self) -> dict:
+        return { "tables": [
+                    {
+                        "table_name": "highlights",
+                        "database_name": "countdb",
+                        "columns": ["vals", "anomalies"],
+                    }
+                ]
+            }
+
+    def test_function_reduce(self, config):
+        _test_sql("SELECT REDUCE(vals, 0, (s, x) -> s + x, s -> s) AS sum_vals FROM highlights",
+                  config, dialect="trino")
+
+    def test_function_reduce_two_columns(self, config):
+        _test_sql("SELECT REDUCE(vals + anomalies, 0, (s, x) -> s + x, s -> s) AS sum_vals FROM highlights",
+                  config, dialect="trino")
+
+    def test_function_reduce_illegal_column(self, config):
+        _test_sql("SELECT REDUCE(vals + col, 0, (s, x) -> s + x, s -> s) AS sum_vals FROM highlights",
+                  config, dialect="trino",
+                  errors=["Column col is not allowed. Column removed from SELECT clause",
+                          "No legal elements in SELECT clause"])
+
+    def test_transform(self, config):
+        _test_sql("SELECT TRANSFORM(vals, x -> x + 1) AS sum_vals FROM highlights",
+                  config, dialect="trino")
+
+    def test_round_transform(self, config):
+        _test_sql("SELECT ROUND(TRANSFORM(vals, x -> x + 1), 0) AS sum_vals FROM highlights",
+                  config, dialect="trino")
