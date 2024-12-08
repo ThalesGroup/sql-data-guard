@@ -155,6 +155,14 @@ class TestSingleTable:
                   errors=["Missing restriction for table: orders column: id value: 123"],
                   fix="WITH data AS (WITH sub_data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM sub_data) SELECT id FROM data",
                   cnn=cnn, data=[(123,)])
+        _test_sql("""WITH data AS (
+  WITH sub_data AS (
+    SELECT id 
+    FROM orders WHERE id = 123    ) 
+  SELECT id FROM sub_data) 
+SELECT id FROM data""", config,
+                  cnn=cnn, data=[(123,)])
+
 
 
     def test_with_clause_missing_restriction(self, config, cnn):

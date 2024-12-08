@@ -280,10 +280,13 @@ def _verify_statement(statement, result: _VerificationContext) -> list:
                 for sub_s in s["common_table_expression"]:
                     if "naked_identifier" in sub_s:
                         result.dynamic_tables.add(sub_s["naked_identifier"])
-                    if "bracketed" in sub_s and "select_statement" in sub_s["bracketed"]:
-                        sub_s["bracketed"]["select_statement"] = _verify_select_statement(sub_s["bracketed"]["select_statement"], result)
-                    if "bracketed" in sub_s and "with_compound_statement" in sub_s["bracketed"]:
-                        sub_s["bracketed"]["with_compound_statement"] = _verify_statement(sub_s["bracketed"]["with_compound_statement"], result)
+                    if "bracketed" in sub_s:
+                        if isinstance(sub_s["bracketed"], dict):
+                            sub_s["bracketed"] = [{k: sub_s["bracketed"][k]} for k in sub_s["bracketed"]]
+                        for e_name in ["select_statement", "with_compound_statement"]:
+                            for sub_s_dict in sub_s["bracketed"]:
+                                if e_name in sub_s_dict:
+                                    sub_s_dict[e_name] = _verify_statement(sub_s_dict[e_name], result)
             if "select_statement" in s:
                 s["select_statement"] = _verify_statement(s["select_statement"], result)
     else:
@@ -451,6 +454,11 @@ def _get_elements(clause, name: str = None, recursive: bool = False,
         if p_index == max_param_index:
             break
 
+def _get_element(clause, name: str = None) -> Optional[dict]:
+    for e in _get_elements(clause, name):
+        if e:
+            return e[1]
+    return None
 
 def _get_clause(clause: list, name: str):
     for c in clause:
