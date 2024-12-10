@@ -152,7 +152,8 @@ def _verify_where_clause(result: _VerificationContext, statement: list, from_tab
             if not found:
                 result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
                 where_clause.insert(1, {"opening_b": " ("})
-                where_clause.append({f"{t}_{idx}": f") AND {r['column']} = {r['value']}"})
+                value = f"'{r['value']}'" if isinstance(r["value"], str) else r["value"]
+                where_clause.append({f"{t}_{idx}": f") AND {r['column']} = {value}"})
 
 
 def _verify_static_expression(result: _VerificationContext, sub_exps: list) -> bool:
@@ -258,10 +259,16 @@ def _verify_restriction(restriction: dict, exp: list) -> bool:
                     if _get_ref_col(e["column_reference"]).column_name == restriction["column"]:
                         columns_found = True
                     static_exp = False
-                if "comparison_operator" in e and _convert_to_text(e) == '=':
+                elif "comparison_operator" in e and _convert_to_text(e) == '=':
                     op_found = True
-                if "numeric_literal" in e:
+                elif "numeric_literal" in e:
                     if int(e["numeric_literal"]) == restriction["value"]:
+                        value_found = True
+                elif "boolean_literal" in e:
+                    if e["boolean_literal"].upper() == str(restriction["value"]).upper():
+                        value_found = True
+                elif "quoted_literal" in e:
+                    if e["quoted_literal"].strip("'") == restriction["value"]:
                         value_found = True
         if columns_found and op_found and value_found:
             found = True
