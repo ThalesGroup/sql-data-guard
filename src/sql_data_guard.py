@@ -240,6 +240,15 @@ def _get_ref_values(l: list) -> List[str]:
 
 
 def _get_ref_col(e) -> _ColumnRef:
+    """
+    Finds a referenced column inside of an expression.
+
+    Args:
+        e (Union[dict, list]): The expression to search within.
+
+    Returns:
+        _ColumnRef: The column reference found in the expression.
+    """
     if isinstance(e, dict):
         return _ColumnRef(column_name=_get_ref_value(e))
     elif isinstance(e, list):
@@ -258,6 +267,16 @@ def _quote_identifier(value: str) -> str:
         return value
 
 def _verify_restriction(restriction: dict, exp: list) -> bool:
+    """
+       Verifies if a given restriction is satisfied within an SQL expression.
+
+       Args:
+           restriction (dict): The restriction to verify, containing 'column' and 'value' keys.
+           exp (list): The SQL expression to check against the restriction.
+
+       Returns:
+           bool: True if the restriction is satisfied, False otherwise.
+   """
     sub_exps = _split_expression(exp, "OR")
     found = False
     for sub_exp in sub_exps:
@@ -405,6 +424,17 @@ def _verify_select_clause_element(from_tables: List[_TableRef], result: _Verific
     return True
 
 def _verify_col(ref_col: _ColumnRef, from_tables: List[_TableRef], context: _VerificationContext) -> bool:
+    """
+    Verifies if a column reference is allowed based on the provided tables and context.
+
+    Args:
+        ref_col (_ColumnRef): The column reference to verify.
+        from_tables (List[_TableRef]): The list of tables to search within.
+        context (_VerificationContext): The context for verification.
+
+    Returns:
+        bool: True if the column reference is allowed, False otherwise.
+    """
     if ref_col.table_name and ref_col.table_name in context.dynamic_tables:
         pass
     elif not _find_column(ref_col.column_name, from_tables, context):
@@ -431,6 +461,17 @@ def _get_max_param_index(func_name: str, el: dict, dialect: str) -> int:
 
 
 def _find_column(col_name: str, from_tables: List[_TableRef], result: _VerificationContext) -> bool:
+    """
+    Finds a column in the given tables based on the provided column name.
+
+    Args:
+        col_name (str): The name of the column to find.
+        from_tables (List[_TableRef]): The list of tables to search within.
+        result (_VerificationContext): The context for verification.
+
+    Returns:
+        bool: True if the column is found in any of the tables, False otherwise.
+    """
     if all(t.table_name in result.dynamic_tables for t in from_tables):
         return True
     for t in from_tables:
@@ -442,6 +483,16 @@ def _find_column(col_name: str, from_tables: List[_TableRef], result: _Verificat
 
 
 def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) -> List[_TableRef]:
+    """
+        Extracts table references from the FROM clause of an SQL query.
+
+        Args:
+            from_clause (dict): The FROM clause of the SQL query.
+            context (_VerificationContext): The context for verification.
+
+        Returns:
+            List[_TableRef]: A list of table references found in the FROM clause.
+    """
     result = []
     for _, e in _get_elements(from_clause, "from_expression"):
         for _, f in _get_elements(e, "from_expression_element", True):
@@ -457,6 +508,18 @@ def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) ->
 
 def _get_elements(clause, name: str = None, recursive: bool = False,
                   max_param_index: int = -1) ->  Generator[Tuple[str, any], None, None]:
+    """
+        Retrieves elements from a given SQL clause.
+
+        Args:
+            clause: The SQL clause to search within, which can be a list or a dict.
+            name (str, optional): The name of the element to find. Defaults to None.
+            recursive (bool, optional): Whether to search recursively within nested elements. Defaults to False.
+            max_param_index (int, optional): The maximum parameter index to search up to. Defaults to -1.
+
+        Yields:
+            Tuple[str, any]: A tuple containing the element name and the element itself.
+    """
     p_index = 0
     for e in clause if isinstance(clause, list) else [clause]:
         for k, v in e.items():
@@ -476,6 +539,16 @@ def _get_elements(clause, name: str = None, recursive: bool = False,
             break
 
 def _get_element(clause, name: str = None) -> Optional[dict]:
+    """
+        Retrieves the first element in the clause that matches the given name.
+
+        Args:
+            clause: The clause to search within, which can be a list or a dict.
+            name (str, optional): The name of the element to find. Defaults to None.
+
+        Returns:
+            Optional[dict]: The first matching element if found, otherwise None.
+    """
     for e in _get_elements(clause, name):
         if e:
             return e[1]
@@ -489,6 +562,15 @@ def _get_clause(clause: list, name: str):
 
 
 def _convert_to_text(item) -> str:
+    """
+        Converts a parsed SQL element into its textual representation.
+
+        Args:
+            item: The parsed SQL element, which can be a dict, list, or a string.
+
+        Returns:
+            str: The textual representation of the SQL element.
+    """
     result = ""
     if isinstance(item, dict):
         for k in item:
