@@ -143,8 +143,19 @@ class TestSingleTable:
                   errors={"Missing restriction for table: orders column: id value: 123"},
                   fix="SELECT id FROM orders WHERE ( id = 123 OR id = 234) AND id = 123")
 
-    def test_sql_injection(self, config):
-        _test_sql("SELECT id FROM orders WHERE id = 123 OR 1 = 1", config,
+    def test_bracketed(self, config):
+        _test_sql("SELECT id FROM orders WHERE (id = 123)", config)
+
+    def test_double_bracketed(self, config):
+        _test_sql("SELECT id FROM orders WHERE ((id = 123))", config)
+
+
+    def test_static_exp(self, config):
+        _test_sql("SELECT id FROM orders WHERE id = 123 OR (1 = 1)", config,
+                  errors={"Static expression is not allowed"})
+
+    def test_nested_static_exp(self, config):
+        _test_sql("SELECT id FROM orders WHERE id = 123 OR (id = 1 OR TRUE)", config,
                   errors={"Static expression is not allowed"})
 
     def test_with_clause(self, config, cnn):

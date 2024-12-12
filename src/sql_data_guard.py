@@ -134,18 +134,14 @@ def _verify_where_clause(result: _VerificationContext, statement: list, from_tab
         where_clause.clear()
         where_clause["updated"] = updated_where_clause
         where_clause = updated_where_clause
-    sub_exps = []
-    for _, e in _get_elements(where_clause, "expression"):
-        if isinstance(e, dict):
-            sub_exps.append([e])
-        else:
-            sub_exps.extend(_split_expression(e, "AND"))
+    sub_exps = _get_expressions(where_clause)
     if not _verify_static_expression(result, sub_exps):
         return
     for t in [c_t for c_t in result.config["tables"] if c_t["table_name"] in [t.table_name for t in from_tables]]:
         for idx, r in enumerate(t.get("restrictions", [])):
             found = False
             for sub_exp in sub_exps:
+                sub_exp = _extract_bracketed(sub_exp)
                 if _verify_restriction(r, sub_exp):
                     found = True
                     break
@@ -155,21 +151,37 @@ def _verify_where_clause(result: _VerificationContext, statement: list, from_tab
                 value = f"'{r['value']}'" if isinstance(r["value"], str) else r["value"]
                 where_clause.append({f"{t}_{idx}": f") AND {r['column']} = {value}"})
 
+def _get_expressions(parent) -> List[list]:
+    result = []
+    for _, e in _get_elements(parent, "expression"):
+        if isinstance(e, dict):
+            result.append([e])
+        else:
+            result.extend(_split_expression(e, "AND"))
+    return result
+
 
 def _verify_static_expression(result: _VerificationContext, sub_exps: list) -> bool:
     has_static_exp = False
     for e in sub_exps:
         for or_exp in _split_expression(e, "OR"):
+            or_exp = _extract_bracketed(or_exp)
             has_ref_col = False
-            for _ in _get_elements(or_exp, "column_reference", True):
+            if _get_element(or_exp, "column_reference"):
                 has_ref_col = True
-                break
             if not has_ref_col:
                 has_static_exp = True
                 break
     if has_static_exp:
         result.add_error("Static expression is not allowed", False)
     return not has_static_exp
+
+def _extract_bracketed(e: list) -> list:
+    if len(e) == 1 and isinstance(e[0], dict) and e[0].keys() == {"bracketed"}:
+        sub_exp = e[0]["bracketed"]
+        if len(sub_exp) == 3 and "start_bracket" in sub_exp and "end_bracket" in sub_exp:
+            return sub_exp["expression"]
+    return e
 
 
 def _build_restrictions(result: _VerificationContext, statement, from_tables: List[_TableRef]):
@@ -448,6 +460,8 @@ def _get_elements(clause, name: str = None, recursive: bool = False,
     p_index = 0
     for e in clause if isinstance(clause, list) else [clause]:
         for k, v in e.items():
+            if k == "bracketed":
+                yield from _get_elements(v, name, recursive)
             if name is None or name == k:
                 yield k, v
             if k == "comma":
