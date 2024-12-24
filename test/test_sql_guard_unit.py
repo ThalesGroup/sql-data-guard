@@ -155,8 +155,15 @@ class TestSingleTable:
                   errors={"Static expression is not allowed"})
 
     def test_nested_static_exp(self, config):
-        _test_sql("SELECT id FROM orders WHERE id = 123 OR (id = 1 OR TRUE)", config,
-                  errors={"Static expression is not allowed"})
+        for sql in [
+            "SELECT id FROM orders WHERE id = 123 OR (id = 1 OR TRUE)",
+            "SELECT id FROM orders WHERE id = 123 AND (product_name = 'product1' OR (TRUE))",
+        ]:
+            _test_sql(sql, config, errors={"Static expression is not allowed"})
+
+    def test_multiple_brackets_exp(self, config):
+        _test_sql("SELECT id FROM orders WHERE (( ( (id = 123))))", config)
+
 
     def test_with_clause(self, config, cnn):
         _test_sql("WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data", config,
@@ -199,6 +206,10 @@ SELECT id FROM data""", config,
         _test_sql("SELECT id, col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
                   config, errors={'Column col is not allowed. Column removed from SELECT clause'},
                   fix="SELECT id FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123", )
+
+    def test_cast(self, config, cnn):
+        _test_sql("SELECT id FROM orders WHERE id = 123 AND CAST(product_name AS VARCHAR) = 'product1'",
+                  config, cnn=cnn, data=[(123,)])
 
 
 

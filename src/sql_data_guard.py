@@ -164,23 +164,49 @@ def _get_expressions(parent) -> List[list]:
 def _verify_static_expression(result: _VerificationContext, sub_exps: list) -> bool:
     has_static_exp = False
     for e in sub_exps:
-        for or_exp in _split_expression(e, "OR"):
-            or_exp = _extract_bracketed(or_exp)
-            has_ref_col = False
-            if _get_element(or_exp, "column_reference"):
-                has_ref_col = True
-            if not has_ref_col:
-                has_static_exp = True
-                break
+        if _has_static_expression(e):
+            has_static_exp = True
+            break
     if has_static_exp:
         result.add_error("Static expression is not allowed", False)
     return not has_static_exp
 
+def _has_static_expression(exp: list) -> bool:
+    exp = _extract_bracketed(exp)
+    for or_exp in _split_expression(exp, "OR"):
+        or_exp = _extract_bracketed(or_exp)
+        has_binary_op = False
+        for e in or_exp:
+            if isinstance(e, dict) and "binary_operator" in e:
+                has_binary_op = True
+                break
+        if not has_binary_op:
+            if _get_element(or_exp, "column_reference", True) is None:
+                return True
+        else:
+            for and_exp in _split_expression(or_exp, "AND"):
+                if _has_static_expression(and_exp):
+                    return True
+    return False
+
+
 def _extract_bracketed(e: list) -> list:
-    if len(e) == 1 and isinstance(e[0], dict) and e[0].keys() == {"bracketed"}:
-        sub_exp = e[0]["bracketed"]
-        if len(sub_exp) == 3 and "start_bracket" in sub_exp and "end_bracket" in sub_exp:
-            return sub_exp["expression"]
+    bracketed = None
+    for el in e:
+        if isinstance(el, dict):
+            if "whitespace" in el:
+                continue
+            elif "bracketed" in el:
+                if bracketed:
+                    return e
+                bracketed = el["bracketed"]
+            else:
+                return e
+    if bracketed is not None:
+        while isinstance(bracketed["expression"], dict) and "bracketed" in bracketed["expression"]:
+            bracketed = bracketed["expression"]["bracketed"]
+        if len(bracketed) == 3 and "start_bracket" in bracketed and "end_bracket" in bracketed:
+            return bracketed["expression"]
     return e
 
 
@@ -538,18 +564,19 @@ def _get_elements(clause, name: str = None, recursive: bool = False,
         if p_index == max_param_index:
             break
 
-def _get_element(clause, name: str = None) -> Optional[dict]:
+def _get_element(clause, name: str = None, recursive: bool = False) -> Optional[dict]:
     """
         Retrieves the first element in the clause that matches the given name.
 
         Args:
             clause: The clause to search within, which can be a list or a dict.
             name (str, optional): The name of the element to find. Defaults to None.
+            recursive (bool, optional): Whether to search recursively within nested elements. Defaults to False.
 
         Returns:
             Optional[dict]: The first matching element if found, otherwise None.
     """
-    for e in _get_elements(clause, name):
+    for e in _get_elements(clause, name, recursive):
         if e:
             return e[1]
     return None
