@@ -229,7 +229,7 @@ def _split_expression(e: list, binary_operator: str) -> List[list]:
     result = []
     current = []
     for el in e:
-        if isinstance(el, dict) and el.get("binary_operator", "") == binary_operator:
+        if isinstance(el, dict) and el.get("binary_operator", "").upper() == binary_operator:
             result.append(current)
             current = []
         else:
@@ -267,13 +267,13 @@ def _get_ref_values(l: list) -> List[str]:
 
 def _get_ref_col(e) -> _ColumnRef:
     """
-    Finds a referenced column inside of an expression.
+    Finds a referenced column inside an expression.
 
     Args:
         e (Union[dict, list]): The expression to search within.
 
     Returns:
-        _ColumnRef: The column reference found in the expression.
+        _ColumnRef: The column reference to find in the expression.
     """
     if isinstance(e, dict):
         return _ColumnRef(column_name=_get_ref_value(e))
@@ -517,7 +517,7 @@ def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) ->
             context (_VerificationContext): The context for verification.
 
         Returns:
-            List[_TableRef]: A list of table references found in the FROM clause.
+            List[_TableRef]: A list of table references to find in the FROM clause.
     """
     result = []
     for _, e in _get_elements(from_clause, "from_expression"):
