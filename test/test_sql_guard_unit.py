@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 from sqlite3 import Connection
-from typing import Set, Generator, Tuple
+from typing import Set, Generator
 
 import pytest
 
@@ -75,6 +75,10 @@ class TestSingleTable:
     def tests(self) -> dict:
         return {t["name"]: t for t in _get_tests("orders_test.jsonl")}
 
+    @pytest.fixture(scope="class")
+    def ai_tests(self) -> dict:
+        return {t["name"]: t for t in _get_tests("orders_ai_generated.jsonl")}
+
 
     @pytest.mark.parametrize("test_name", [t["name"] for t in _get_tests("orders_test.jsonl")])
     def test_orders_from_file(self, test_name, config, cnn, tests):
@@ -82,8 +86,15 @@ class TestSingleTable:
         _test_sql(test["sql"], config, set(test.get("errors", [])),
               test.get("fix"), cnn=cnn, data=test.get("data"))
 
+    @pytest.mark.parametrize("test_name", [t["name"] for t in _get_tests("orders_ai_generated.jsonl")])
+    def test_orders_from_file(self, test_name, config, cnn, ai_tests):
+        test = ai_tests[test_name]
+        _test_sql(test["sql"], config, set(test.get("errors", [])),
+              test.get("fix"), cnn=cnn, data=test.get("data"))
+
+
     @pytest.mark.parametrize("test_name", [])
-    @pytest.mark.skip(reason="Use it to run tests by name")
+    @pytest.mark.skip(reason="Use it to run tests by name. You can switch between tests and ai_tests")
     def test_by_name(self, test_name, config, cnn, tests):
         test = tests[test_name]
         _test_sql(test["sql"], config, set(test.get("errors", [])),
