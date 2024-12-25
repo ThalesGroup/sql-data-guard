@@ -1,7 +1,9 @@
+import json
 import logging
+import os
 import sqlite3
 from sqlite3 import Connection
-from typing import Set
+from typing import Set, Generator, Tuple
 
 import pytest
 
@@ -25,12 +27,18 @@ def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, 
     else:
         assert result["fixed"] == fix
         sql_to_use = result["fixed"]
-    if cnn:
+    if cnn and data:
         fetched_data = cnn.execute(sql_to_use).fetchall()
         if data is not None:
-            assert fetched_data == data
+            assert fetched_data == [tuple(row) for row in data]
 
+def _get_resource(file_name: str) -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
 
+def _get_tests(file_name: str) -> Generator[dict, None, None]:
+    with open(_get_resource(os.path.join("resources", file_name))) as f:
+        for line in f:
+            yield json.loads(line)
 
 
 class TestSQLErrors:
@@ -57,160 +65,29 @@ class TestSingleTable:
     @pytest.fixture(scope="class")
     def cnn(self):
         with sqlite3.connect(":memory:") as conn:
-            conn.execute("CREATE TABLE orders (id INT, product_name TEXT, account_id INT)")
+            conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
+            conn.execute("CREATE TABLE orders_db.orders (id INT, product_name TEXT, account_id INT)")
             conn.execute("INSERT INTO orders VALUES (123, 'product1', 123)")
             conn.execute("INSERT INTO orders VALUES (124, 'product2', 124)")
             yield conn
 
-    def test_select_illegal_table(self, config):
-        _test_sql("SELECT * FROM users", config, errors={"Table users is not allowed"})
-
-    def test_select_two_illegal_tables(self, config):
-        _test_sql("SELECT col1 FROM users AS u1, products AS p1", config,
-                  errors={"Table users is not allowed", "Table products is not allowed"})
-
-    def test_select_star(self, config, cnn):
-        _test_sql("SELECT * FROM orders WHERE id = 123", config, errors={"SELECT * is not allowed"},
-                  fix="SELECT id, product_name, account_id FROM orders WHERE id = 123",
-                  cnn=cnn, data=[(123, "product1", 123)])
-
-    def test_two_cols(self, config, cnn):
-        _test_sql("SELECT id, product_name FROM orders WHERE id = 123", config, cnn=cnn, data=[(123, 'product1')])
+    @pytest.fixture(scope="class")
+    def tests(self) -> dict:
+        return {t["name"]: t for t in _get_tests("orders_test.jsonl")}
 
 
-    def test_quote_and_alias(self, config, cnn):
-        _test_sql('SELECT "id" AS my_id FROM orders WHERE id = 123', config, cnn=cnn, data=[(123,)])
+    @pytest.mark.parametrize("test_name", [t["name"] for t in _get_tests("orders_test.jsonl")])
+    def test_orders_from_file(self, test_name, config, cnn, tests):
+        test = tests[test_name]
+        _test_sql(test["sql"], config, set(test.get("errors", [])),
+              test.get("fix"), cnn=cnn, data=test.get("data"))
 
-    def test_sql_with_group_by_and_order_by(self, config, cnn):
-        _test_sql("SELECT id FROM orders GROUP BY id ORDER BY id", config,
-                  errors={'Missing restriction for table: orders column: id value: 123'},
-                  fix="SELECT id FROM orders WHERE id = 123 GROUP BY id ORDER BY id",
-                  cnn=cnn, data=[(123,)])
-
-    def test_sql_with_where_and_group_by_and_order_by(self, config):
-        _test_sql("SELECT id FROM orders WHERE product_name='' GROUP BY id ORDER BY id", config,
-                  errors={"Missing restriction for table: orders column: id value: 123"},
-                  fix="SELECT id FROM orders WHERE ( product_name='') AND id = 123 GROUP BY id ORDER BY id")
-
-    def test_col_expression(self, config):
-        _test_sql("SELECT col + 1 FROM orders WHERE id = 123", config,
-                  errors={"Column col is not allowed. Column removed from SELECT clause",
-                          "No legal elements in SELECT clause"})
-
-    def test_select_illegal_col(self, config):
-        _test_sql("SELECT col, id FROM orders WHERE id = 123", config,
-                  errors={"Column col is not allowed. Column removed from SELECT clause"},
-                  fix="SELECT id FROM orders WHERE id = 123")
-
-    def test_select_no_legal_cols(self, config):
-        _test_sql("SELECT col1, col2 FROM orders WHERE id = 123", config,
-                  errors={"Column col1 is not allowed. Column removed from SELECT clause",
-                          "Column col2 is not allowed. Column removed from SELECT clause",
-                          "No legal elements in SELECT clause"})
-
-    def test_missing_restriction(self, config):
-        _test_sql("SELECT id FROM orders", config,
-                  errors={"Missing restriction for table: orders column: id value: 123"},
-                  fix="SELECT id FROM orders WHERE id = 123")
-
-    def test_wrong_restriction(self, config):
-        _test_sql("SELECT id FROM orders WHERE id = 234", config,
-                  errors={"Missing restriction for table: orders column: id value: 123"},
-                  fix="SELECT id FROM orders WHERE ( id = 234) AND id = 123")
-
-    def test_table_and_database(self, config):
-        _test_sql("SELECT id FROM orders_db.orders AS o WHERE id = 123", config)
-
-    def test_function_call(self, config):
-        _test_sql("SELECT COUNT(DISTINCT id) FROM orders_db.orders AS o WHERE id = 123", config)
-
-    def test_function_call_illegal_col(self, config):
-        _test_sql("SELECT COUNT(DISTINCT col) FROM orders_db.orders AS o WHERE id = 123", config,
-                  errors={"Column col is not allowed. Column removed from SELECT clause",
-                          "No legal elements in SELECT clause"})
-
-    def test_table_prefix(self, config):
-        _test_sql("SELECT orders.id FROM orders AS o WHERE id = 123", config)
-
-    def test_table_and_db_prefix(self, config):
-        _test_sql("SELECT orders_db.orders.id FROM orders_db.orders WHERE orders_db.orders.id = 123", config)
-
-    def test_table_alias(self, config):
-        _test_sql("SELECT a.id FROM orders_db.orders AS a WHERE a.id = 123", config)
-
-    def test_bad_restriction(self, config):
-        _test_sql("SELECT id FROM orders WHERE id = 123 OR id = 234", config,
-                  errors={"Missing restriction for table: orders column: id value: 123"},
-                  fix="SELECT id FROM orders WHERE ( id = 123 OR id = 234) AND id = 123")
-
-    def test_bracketed(self, config):
-        _test_sql("SELECT id FROM orders WHERE (id = 123)", config)
-
-    def test_double_bracketed(self, config):
-        _test_sql("SELECT id FROM orders WHERE ((id = 123))", config)
-
-
-    def test_static_exp(self, config):
-        _test_sql("SELECT id FROM orders WHERE id = 123 OR (1 = 1)", config,
-                  errors={"Static expression is not allowed"})
-
-    def test_nested_static_exp(self, config):
-        for sql in [
-            "SELECT id FROM orders WHERE id = 123 OR (id = 1 OR TRUE)",
-            "SELECT id FROM orders WHERE id = 123 AND (product_name = 'product1' OR (TRUE))",
-        ]:
-            _test_sql(sql, config, errors={"Static expression is not allowed"})
-
-    def test_multiple_brackets_exp(self, config):
-        _test_sql("SELECT id FROM orders WHERE (( ( (id = 123))))", config)
-
-
-    def test_with_clause(self, config, cnn):
-        _test_sql("WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data", config,
-                  cnn=cnn, data=[(123,)])
-
-    def test_nested_with_clause(self, config, cnn):
-        _test_sql("WITH data AS (WITH sub_data AS (SELECT id FROM orders) SELECT id FROM sub_data) SELECT id FROM data", config,
-                  errors={"Missing restriction for table: orders column: id value: 123"},
-                  fix="WITH data AS (WITH sub_data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM sub_data) SELECT id FROM data",
-                  cnn=cnn, data=[(123,)])
-        _test_sql("""WITH data AS (
-  WITH sub_data AS (
-    SELECT id 
-    FROM orders WHERE id = 123    ) 
-  SELECT id FROM sub_data) 
-SELECT id FROM data""", config,
-                  cnn=cnn, data=[(123,)])
-
-
-
-    def test_with_clause_missing_restriction(self, config, cnn):
-        _test_sql("WITH data AS (SELECT id FROM orders) SELECT id FROM data", config,
-                  errors={"Missing restriction for table: orders column: id value: 123"},
-                  fix="WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data",
-                  cnn=cnn, data=[(123,)])
-
-    def test_lowercase(self, config, cnn):
-        _test_sql("with data as (select id from orders as o where id = 123) select id from data",
-                  config, set(), cnn=cnn, data=[(123,)])
-
-    def test_sub_select(self, config, cnn):
-        _test_sql("SELECT id, sub_select.col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
-                  config, cnn=cnn, data=[(123, 1)])
-
-    def test_sub_select_expression(self, config, cnn):
-        _test_sql("SELECT id, 1 + (1 + sub_select.col) FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
-                  config, cnn=cnn, data=[(123, 3)])
-
-    def test_sub_select_access_col_without_prefix(self, config, cnn):
-        _test_sql("SELECT id, col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123",
-                  config, errors={'Column col is not allowed. Column removed from SELECT clause'},
-                  fix="SELECT id FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123", )
-
-    def test_cast(self, config, cnn):
-        _test_sql("SELECT id FROM orders WHERE id = 123 AND CAST(product_name AS VARCHAR) = 'product1'",
-                  config, cnn=cnn, data=[(123,)])
-
+    @pytest.mark.parametrize("test_name", [])
+    @pytest.mark.skip(reason="Use it to run tests by name")
+    def test_by_name(self, test_name, config, cnn, tests):
+        test = tests[test_name]
+        _test_sql(test["sql"], config, set(test.get("errors", [])),
+              test.get("fix"), cnn=cnn, data=test.get("data"))
 
 
 
