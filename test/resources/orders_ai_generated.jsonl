@@ -16,3 +16,18 @@
 {"name": "abs_function", "sql": "SELECT ABS(id) FROM orders WHERE id = 123", "errors": [], "data": [[123]]}
 {"name": "sqrt_function", "sql": "SELECT SQRT(6.25) FROM orders WHERE id = 123", "errors": [], "data": [[2.5]]}
 {"name": "date_function", "sql": "SELECT DATE('2025-01-01') FROM orders WHERE id = 123", "errors": [], "data": [["2025-01-01"]]}
+{"name": "brackets_in_select_1", "sql": "SELECT (id) FROM orders WHERE id = 123", "errors": [], "data": [[123]]}
+{"name": "brackets_in_select_2", "sql": "SELECT (id + 1) FROM orders WHERE id = 123", "errors": [], "data": [[124]]}
+{"name": "brackets_in_select_3", "sql": "SELECT (id * 2) FROM orders WHERE id = 123", "errors": [], "data": [[246]]}
+{"name": "brackets_in_select_4", "sql": "SELECT (id / 2.0) FROM orders WHERE id = 123", "errors": [], "data": [[61.5]]}
+{"name": "brackets_in_select_5", "sql": "SELECT (id - 1) FROM orders WHERE id = 123", "errors": [], "data": [[122]]}
+{"name": "brackets_in_select_6", "sql": "SELECT (id % 2) FROM orders WHERE id = 123", "errors": [], "data": [[1]]}
+{"name": "brackets_in_select_7", "sql": "SELECT (id + (id * 2)) FROM orders WHERE id = 123", "errors": [], "data": [[369]]}
+{"name": "brackets_in_select_8", "sql": "SELECT ((id + 1) * 2) FROM orders WHERE id = 123", "errors": [], "data": [[248]]}
+{"name": "brackets_in_select_9", "sql": "SELECT (id + (id / 2.0)) FROM orders WHERE id = 123", "errors": [], "data": [[184.5]]}
+{"name": "brackets_in_select_10", "sql": "SELECT ((id - 1) / 2) FROM orders WHERE id = 123", "errors": [], "data": [[61]]}
+{"name": "mixed_case_and_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AnD status = 'shipped'", "errors": [], "data": [[123]]}
+{"name": "mixed_case_or_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AND (status = 'shipped' Or status = 'pending')", "errors": [], "data": [[123]]}
+{"name": "mixed_case_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE id = 123 oR status = 'pending'", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SeLeCt id FrOm orders WhErE ( id = 123 oR status = 'pending') AND id = 123", "data": [[123]]}
+{"name": "mixed_case_and_or_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AnD (status = 'shipped' Or status = 'pending')", "errors": [], "data": [[123]]}
+{"name": "mixed_case_and_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE (id = 123 Or id = 124) AnD status = 'shipped'", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SeLeCt id FrOm orders WhErE ( (id = 123 Or id = 124) AnD status = 'shipped') AND id = 123", "data": [[123]]}
