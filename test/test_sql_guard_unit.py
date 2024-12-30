@@ -66,9 +66,10 @@ class TestSingleTable:
     def cnn(self):
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
-            conn.execute("CREATE TABLE orders_db.orders (id INT, product_name TEXT, account_id INT, status TEXT)")
-            conn.execute("INSERT INTO orders VALUES (123, 'product1', 123, 'shipped')")
-            conn.execute("INSERT INTO orders VALUES (124, 'product2', 124, 'pending')")
+            conn.execute("CREATE TABLE orders_db.orders (id INT, "
+                         "product_name TEXT, account_id INT, status TEXT, not_allowed TEXT)")
+            conn.execute("INSERT INTO orders VALUES (123, 'product1', 123, 'shipped', 'not_allowed')")
+            conn.execute("INSERT INTO orders VALUES (124, 'product2', 124, 'pending', 'not_allowed')")
             yield conn
 
     @pytest.fixture(scope="class")
@@ -93,10 +94,10 @@ class TestSingleTable:
               test.get("fix"), cnn=cnn, data=test.get("data"))
 
 
-    @pytest.mark.parametrize("test_name", ["mixed_case_and_operator_1"])
-    # @pytest.mark.skip(reason="Use it to run tests by name. You can switch between tests and ai_tests")
-    def test_by_name(self, test_name, config, cnn, ai_tests):
-        test = ai_tests[test_name]
+    @pytest.mark.parametrize("test_name", [])
+    def test_by_name(self, test_name, config, cnn, tests):
+        """Test by name. Use it to run a single test from tests/ai_tests by name"""
+        test = tests[test_name]
         _test_sql(test["sql"], config, set(test.get("errors", [])),
               test.get("fix"), cnn=cnn, data=test.get("data"))
 

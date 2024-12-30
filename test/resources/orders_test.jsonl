@@ -33,3 +33,6 @@
 {"name": "sub_select_access_col_without_prefix", "sql": "SELECT id, col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123", "errors": ["Column col is not allowed. Column removed from SELECT clause"], "fix": "SELECT id FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123"}
 {"name": "cast", "sql": "SELECT id FROM orders WHERE id = 123 AND CAST(product_name AS VARCHAR) = 'product1'", "errors": [], "data": [[123]]}
 {"name": "case_when", "sql": "SELECT CASE WHEN id = 123 THEN 111 ELSE FALSE END FROM orders WHERE id = 123", "errors": [], "data": [[111]]}
+{"name": "not_allowed_column", "sql": "SELECT id, not_allowed FROM orders WHERE id = 123", "errors": ["Column not_allowed is not allowed. Column removed from SELECT clause"], "fix": "SELECT id FROM orders WHERE id = 123" ,"data": [[123]]}
+{"name": "not_allowed_column_brackets_1", "sql": "SELECT (id, not_allowed) FROM orders WHERE id = 123", "errors": ["Column not_allowed is not allowed. Column removed from SELECT clause", "No legal elements in SELECT clause"]}
+{"name": "not_allowed_column_brackets_2", "sql": "SELECT (id, not_allowed), product_name FROM orders WHERE id = 123", "errors": ["Column not_allowed is not allowed. Column removed from SELECT clause"], "fix": "SELECT product_name FROM orders WHERE id = 123", "data": [["product1"]]}

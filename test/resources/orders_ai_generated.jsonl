@@ -31,3 +31,11 @@
 {"name": "mixed_case_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE id = 123 oR status = 'pending'", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SeLeCt id FrOm orders WhErE ( id = 123 oR status = 'pending') AND id = 123", "data": [[123]]}
 {"name": "mixed_case_and_or_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AnD (status = 'shipped' Or status = 'pending')", "errors": [], "data": [[123]]}
 {"name": "mixed_case_and_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE (id = 123 Or id = 124) AnD status = 'shipped'", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SeLeCt id FrOm orders WhErE ( (id = 123 Or id = 124) AnD status = 'shipped') AND id = 123", "data": [[123]]}
+{"name": "single_line_comment_in_select", "sql": "SELECT id -- comment\nFROM orders WHERE id = 123", "errors": [], "data": [[123]]}
+{"name": "single_line_comment_in_where", "sql": "SELECT id FROM orders WHERE id = 123 -- comment", "errors": [], "data": [[123]]}
+{"name": "multi_line_comment_in_select", "sql": "SELECT id /* multi-line\ncomment */ FROM orders WHERE id = 123", "errors": [], "data": [[123]]}
+{"name": "multi_line_comment_in_where", "sql": "SELECT id FROM orders WHERE id = 123 /* multi-line\ncomment */", "errors": [], "data": [[123]]}
+{"name": "single_line_comment_in_from", "sql": "SELECT id FROM orders -- comment\nWHERE id = 123", "errors": [], "data": [[123]]}
+{"name": "multi_line_comment_in_from", "sql": "SELECT id FROM orders /* multi-line\ncomment */ WHERE id = 123", "errors": [], "data": [[123]]}
+{"name": "single_line_comment_in_brackets", "sql": "SELECT (id -- comment\n) FROM orders WHERE id = 123", "errors": [], "data": [[123]]}
+{"name": "multi_line_comment_in_brackets", "sql": "SELECT (id, not_allowed /* multi-line\ncomment */) FROM orders WHERE id = 123", "errors": ["Column not_allowed is not allowed. Column removed from SELECT clause", "No legal elements in SELECT clause"]}
