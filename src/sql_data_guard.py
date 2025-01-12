@@ -191,25 +191,8 @@ def _has_static_expression(exp: list) -> bool:
 
 
 def _extract_bracketed(e: list, exp_name: str = "expression") -> list:
-    bracketed = None
-    for el in e:
-        if isinstance(el, dict):
-            if "whitespace" in el:
-                continue
-            elif "bracketed" in el:
-                if bracketed:
-                    return e
-                bracketed = el["bracketed"]
-            else:
-                return e
-    if bracketed is not None:
-        while isinstance(bracketed[exp_name], dict) and "bracketed" in bracketed[exp_name]:
-            bracketed = bracketed[exp_name]["bracketed"]
-        if len(bracketed) == 3 and "start_bracket" in bracketed and "end_bracket" in bracketed:
-            if isinstance(bracketed[exp_name], dict):
-                bracketed[exp_name] = [{k: bracketed[exp_name][k]} for k in bracketed[exp_name]]
-            return bracketed[exp_name]
-    return e
+    sub_e = _get_element(e, exp_name)
+    return sub_e if sub_e else e
 
 
 def _build_restrictions(result: _VerificationContext, statement, from_tables: List[_TableRef]):
@@ -540,8 +523,10 @@ def _handle_from_element(f: dict, context: _VerificationContext) -> Optional[_Ta
         result = _get_ref_table(table_ref)
     else:
         result = None
-        s = _extract_bracketed([f["table_expression"]], "select_statement")
-        _verify_select_statement(s, context)
+        s = _get_element(f["table_expression"], "select_statement")
+        updated = _verify_select_statement(s, context)
+        s.clear()
+        s[""] = updated
     if "alias_expression" in f:
         context.dynamic_tables.add(_get_ref_value(f["alias_expression"]))
     return result
