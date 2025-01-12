@@ -203,7 +203,6 @@ def _extract_bracketed(e: list, exp_name: str = "expression") -> list:
             else:
                 return e
     if bracketed is not None:
-        _get_elements(bracketed, exp_name)
         while isinstance(bracketed[exp_name], dict) and "bracketed" in bracketed[exp_name]:
             bracketed = bracketed[exp_name]["bracketed"]
         if len(bracketed) == 3 and "start_bracket" in bracketed and "end_bracket" in bracketed:
