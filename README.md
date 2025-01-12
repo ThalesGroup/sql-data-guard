@@ -1,5 +1,7 @@
 # sql-data-guard: Safety Layer for LLM Database Interactions
 
+<img alt="logo.png" src="sql-data-guard-logo.png" width="300"/>
+
 SQL is the go-to language for performing queries on databases and for a good reason - it’s well known, easy to use and pretty simple. However, it seems that it’s as easy to use as it is to exploit and SQL injection is still one of the most targeted vulnerabilities especially nowadays with the proliferation of “natural language queries” harnessing LLM power to generate and run SQL queries.
 
 
@@ -13,7 +15,6 @@ By verifying and modifying queries before they are executed, sql-data-guard help
 
 
 Connecting LLMs to SQL databases without strict controls can risk accidental data exposure, as models may generate SQL queries that access sensitive information. OWASP highlights cases of poor sandboxing leading to unauthorized disclosures, emphasizing the need for clear access controls and prompt validation. Businesses should adopt rigorous access restrictions, regular audits, and robust API security, especially to comply with privacy laws and regulations like GDPR and CCPA, which penalize unauthorized data exposure.
-
 
 ## Why Use sql-data-guard?
 
