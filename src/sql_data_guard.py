@@ -181,7 +181,7 @@ def _has_static_expression(exp: list) -> bool:
                 has_binary_op = True
                 break
         if not has_binary_op:
-            if _get_element(or_exp, "column_reference", True) is None:
+            if _get_element(or_exp, "column_reference") is None:
                 return True
         else:
             for and_exp in _split_expression(or_exp, "AND"):
@@ -203,6 +203,7 @@ def _extract_bracketed(e: list, exp_name: str = "expression") -> list:
             else:
                 return e
     if bracketed is not None:
+        _get_elements(bracketed, exp_name)
         while isinstance(bracketed[exp_name], dict) and "bracketed" in bracketed[exp_name]:
             bracketed = bracketed[exp_name]["bracketed"]
         if len(bracketed) == 3 and "start_bracket" in bracketed and "end_bracket" in bracketed:
@@ -547,15 +548,13 @@ def _handle_from_element(f: dict, context: _VerificationContext) -> Optional[_Ta
     return result
 
 
-def _get_elements(clause, name: str = None, recursive: bool = False,
-                  max_param_index: int = -1) ->  Generator[Tuple[str, any], None, None]:
+def _get_elements(clause, name: str = None, max_param_index: int = -1) ->  Generator[Tuple[str, any], None, None]:
     """
         Retrieves elements from a given SQL clause.
 
         Args:
             clause: The SQL clause to search within, which can be a list or a dict.
             name (str, optional): The name of the element to find. Defaults to None.
-            recursive (bool, optional): Whether to search recursively within nested elements. Defaults to False.
             max_param_index (int, optional): The maximum parameter index to search up to. Defaults to -1.
 
         Yields:
@@ -565,33 +564,28 @@ def _get_elements(clause, name: str = None, recursive: bool = False,
     for e in clause if isinstance(clause, list) else [clause]:
         for k, v in e.items():
             if k == "bracketed":
-                yield from _get_elements(v, name, recursive)
+                yield from _get_elements(v, name)
             if name is None or name == k:
                 yield k, v
             if k == "comma":
                 p_index += 1
                 if p_index == max_param_index:
                     break
-            if recursive:
-                if isinstance(v, list) or isinstance(v, dict):
-                    for ek in _get_elements(v, name, recursive):
-                        yield ek
         if p_index == max_param_index:
             break
 
-def _get_element(clause, name: str = None, recursive: bool = False) -> Optional[dict]:
+def _get_element(clause, name: str = None) -> Optional[dict]:
     """
         Retrieves the first element in the clause that matches the given name.
 
         Args:
             clause: The clause to search within, which can be a list or a dict.
             name (str, optional): The name of the element to find. Defaults to None.
-            recursive (bool, optional): Whether to search recursively within nested elements. Defaults to False.
 
         Returns:
             Optional[dict]: The first matching element if found, otherwise None.
     """
-    for e in _get_elements(clause, name, recursive):
+    for e in _get_elements(clause, name):
         if e:
             return e[1]
     return None
