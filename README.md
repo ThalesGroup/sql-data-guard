@@ -1,6 +1,9 @@
+
 # sql-data-guard: Safety Layer for LLM Database Interactions
 
-<img alt="logo.png" src="sql-data-guard-logo.png" width="300"/>
+<div style="text-align: center;">
+    <img alt="SQL Data Guard logo" src="sql-data-guard-logo.png" width="300"/>
+</div>
 
 SQL is the go-to language for performing queries on databases and for a good reason - it’s well known, easy to use and pretty simple. However, it seems that it’s as easy to use as it is to exploit and SQL injection is still one of the most targeted vulnerabilities especially nowadays with the proliferation of “natural language queries” harnessing LLM power to generate and run SQL queries.
 
