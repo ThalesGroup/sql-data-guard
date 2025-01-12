@@ -190,7 +190,7 @@ def _has_static_expression(exp: list) -> bool:
     return False
 
 
-def _extract_bracketed(e: list) -> list:
+def _extract_bracketed(e: list, exp_name: str = "expression") -> list:
     bracketed = None
     for el in e:
         if isinstance(el, dict):
@@ -203,10 +203,12 @@ def _extract_bracketed(e: list) -> list:
             else:
                 return e
     if bracketed is not None:
-        while isinstance(bracketed["expression"], dict) and "bracketed" in bracketed["expression"]:
-            bracketed = bracketed["expression"]["bracketed"]
+        while isinstance(bracketed[exp_name], dict) and "bracketed" in bracketed[exp_name]:
+            bracketed = bracketed[exp_name]["bracketed"]
         if len(bracketed) == 3 and "start_bracket" in bracketed and "end_bracket" in bracketed:
-            return bracketed["expression"]
+            if isinstance(bracketed[exp_name], dict):
+                bracketed[exp_name] = [{k: bracketed[exp_name][k]} for k in bracketed[exp_name]]
+            return bracketed[exp_name]
     return e
 
 
@@ -521,15 +523,28 @@ def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) ->
     """
     result = []
     for _, e in _get_elements(from_clause, "from_expression"):
-        for _, f in _get_elements(e, "from_expression_element", True):
-            table_ref = f["table_expression"].get("table_reference")
+        for _, f in _get_elements(e, "from_expression_element"):
+            table_ref = _handle_from_element(f, context)
             if table_ref:
-                result.append(_get_ref_table(table_ref))
-            elif "alias_expression" in f:
-                context.dynamic_tables.add(_get_ref_value(f["alias_expression"]))
+                result.append(table_ref)
+        for _, j in _get_elements(e, "join_clause"):
+            for _, f in _get_elements(j, "from_expression_element"):
+                table_ref = _handle_from_element(f, context)
+                if table_ref:
+                    result.append(table_ref)
     return result
 
-
+def _handle_from_element(f: dict, context: _VerificationContext) -> Optional[_TableRef]:
+    table_ref = f["table_expression"].get("table_reference")
+    if table_ref:
+        result = _get_ref_table(table_ref)
+    else:
+        result = None
+        s = _extract_bracketed([f["table_expression"]], "select_statement")
+        _verify_select_statement(s, context)
+    if "alias_expression" in f:
+        context.dynamic_tables.add(_get_ref_value(f["alias_expression"]))
+    return result
 
 
 def _get_elements(clause, name: str = None, recursive: bool = False,
