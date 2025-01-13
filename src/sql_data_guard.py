@@ -175,18 +175,14 @@ def _has_static_expression(exp: list) -> bool:
     exp = _extract_bracketed(exp)
     for or_exp in _split_expression(exp, "OR"):
         or_exp = _extract_bracketed(or_exp)
-        has_binary_op = False
+        has_op = False
         for e in or_exp:
-            if isinstance(e, dict) and "binary_operator" in e:
-                has_binary_op = True
+            if isinstance(e, dict) and "binary_operator" in e or "comparison_operator" in e:
+                has_op = True
                 break
-        if not has_binary_op:
+        if not has_op:
             if _get_element(or_exp, "column_reference") is None:
                 return True
-        else:
-            for and_exp in _split_expression(or_exp, "AND"):
-                if _has_static_expression(and_exp):
-                    return True
     return False
 
 

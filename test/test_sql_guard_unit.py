@@ -56,7 +56,7 @@ class TestSingleTable:
                     {
                         "table_name": "orders",
                         "database_name": "orders_db",
-                        "columns": ["id", "product_name", "account_id"],
+                        "columns": ["id", "product_name", "account_id", "day"],
                         "restrictions": [{"column": "id", "value": 123}]
                     }
                 ]
@@ -67,9 +67,9 @@ class TestSingleTable:
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
             conn.execute("CREATE TABLE orders_db.orders (id INT, "
-                         "product_name TEXT, account_id INT, status TEXT, not_allowed TEXT)")
-            conn.execute("INSERT INTO orders VALUES (123, 'product1', 123, 'shipped', 'not_allowed')")
-            conn.execute("INSERT INTO orders VALUES (124, 'product2', 124, 'pending', 'not_allowed')")
+                         "product_name TEXT, account_id INT, status TEXT, not_allowed TEXT, day TEXT)")
+            conn.execute("INSERT INTO orders VALUES (123, 'product1', 123, 'shipped', 'not_allowed', '2025-01-01')")
+            conn.execute("INSERT INTO orders VALUES (124, 'product2', 124, 'pending', 'not_allowed', '2025-01-02')")
             yield conn
 
     @pytest.fixture(scope="class")
