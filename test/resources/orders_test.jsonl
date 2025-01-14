@@ -40,3 +40,6 @@
 {"name": "no_where_clause", "sql": "SELECT id FROM orders", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE id = 123", "data": [[123]]}
 {"name": "no_where_clause_sub_select", "sql": "SELECT id FROM (SELECT id FROM orders)", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM (SELECT id FROM orders WHERE id = 123)", "data": [[123]]}
 {"name": "day_function", "sql": "SELECT id FROM orders WHERE id = 123 AND DATE(day) < DATE('now','+14 day')", "errors": [], "data": [[123]]}
+{"name": "no_from", "sql": "SELECT 1 AS col", "errors": [], "data": [[1]]}
+{"name": "no_from_sub_select", "sql": "SELECT id, sub.col FROM orders CROSS JOIN (SELECT 11 AS col) AS sub WHERE id = 123", "errors": [], "data": [[123, 11]]}
+{"name": "no_from_sub_select_lateral", "sql": "SELECT id, sub.col FROM orders CROSS JOIN LATERAL (SELECT 11 AS col) AS sub WHERE id = 123", "errors": []}

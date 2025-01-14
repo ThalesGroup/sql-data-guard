@@ -500,6 +500,8 @@ def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) ->
         Returns:
             List[_TableRef]: A list of table references to find in the FROM clause.
     """
+    if from_clause is None:
+        return []
     result = []
     for _, e in _get_elements(from_clause, "from_expression"):
         for _, f in _get_elements(e, "from_expression_element"):
@@ -514,12 +516,16 @@ def _get_from_clause_tables(from_clause: dict, context: _VerificationContext) ->
     return result
 
 def _handle_from_element(f: dict, context: _VerificationContext) -> Optional[_TableRef]:
-    table_ref = f["table_expression"].get("table_reference")
+    t = f["table_expression"]
+    table_ref = t.get("table_reference")
     if table_ref:
         result = _get_ref_table(table_ref)
     else:
         result = None
-        s = _get_element(f["table_expression"], "select_statement")
+        if "function" in t and t["function"]["function_name"]["function_name_identifier"].upper() == "LATERAL":
+            s = _get_element(t["function"]["bracketed"]["expression"], "select_statement")
+        else:
+            s = _get_element(t, "select_statement")
         updated = _verify_select_statement(s, context)
         s.clear()
         s[""] = updated
