@@ -111,12 +111,13 @@ curl -X POST http://localhost:8080/verify_sql \
      -d '{
            "query": "SELECT * FROM orders WHERE account_id = 123",
            "config": {
-             "tables": {
-               "orders": {
+             "tables": [
+               {
+                 "name": "orders",
                  "columns": ["id", "product_name", "account_id"],
                  "restrictions": [{"column": "account_id", "value": 123}]
-               }
-             }
+               }             
+            ]
            }
          }'
 ```
