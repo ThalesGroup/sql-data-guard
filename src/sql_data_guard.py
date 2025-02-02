@@ -161,30 +161,36 @@ def _get_expressions(parent) -> List[list]:
     return result
 
 
-def _verify_static_expression(result: _VerificationContext, sub_exps: list) -> bool:
+def _verify_static_expression(context: _VerificationContext, sub_exps: list) -> bool:
     has_static_exp = False
     for e in sub_exps:
-        if _has_static_expression(e):
+        if _has_static_expression(context, e):
             has_static_exp = True
-            break
-    if has_static_exp:
-        result.add_error("Static expression is not allowed", False)
     return not has_static_exp
 
-def _has_static_expression(exp: list) -> bool:
+def _has_static_expression(context: _VerificationContext, exp: list) -> bool:
     exp = _extract_bracketed(exp)
+    result = False
     for or_exp in _split_expression(exp, "OR"):
         or_exp = _extract_bracketed(or_exp)
-        has_op = False
-        for e in or_exp:
-            if isinstance(e, dict) and "binary_operator" in e or "comparison_operator" in e:
-                has_op = True
-                break
-        if not has_op:
-            if _get_element(or_exp, "column_reference") is None:
+        if not _has_column_reference(or_exp):
+            context.add_error(
+                f"Static expression is not allowed: {_convert_to_text(or_exp).strip()}", False)
+            result = True
+    return result
+
+
+def _has_column_reference(exp: list) -> bool:
+    for k, e in _get_elements(exp):
+        if k == "column_reference":
+            return True
+        elif k == "expression":
+            if _has_column_reference(e):
+                return True
+        elif k == "function":
+            if _has_column_reference(e["bracketed"]):
                 return True
     return False
-
 
 def _extract_bracketed(e: list, exp_name: str = "expression") -> list:
     sub_e = _get_element(e, exp_name)

@@ -43,3 +43,7 @@
 {"name": "no_from", "sql": "SELECT 1 AS col", "errors": [], "data": [[1]]}
 {"name": "no_from_sub_select", "sql": "SELECT id, sub.col FROM orders CROSS JOIN (SELECT 11 AS col) AS sub WHERE id = 123", "errors": [], "data": [[123, 11]]}
 {"name": "no_from_sub_select_lateral", "sql": "SELECT id, sub.col FROM orders CROSS JOIN LATERAL (SELECT 11 AS col) AS sub WHERE id = 123", "errors": []}
+{"name": "day_between", "sql": "SELECT id FROM orders WHERE DATE(day) BETWEEN DATE('2000-01-01') AND DATE('now','-1 day') AND id = 123", "errors": [], "data": [[123]]}
+{"name": "day_between_static_exp", "sql": "SELECT id FROM orders WHERE DATE('2000-01-01') BETWEEN DATE('2000-01-01') AND DATE('2000-01-01') AND id = 123", "errors": ["Static expression is not allowed: DATE('2000-01-01') BETWEEN DATE('2000-01-01') AND DATE('2000-01-01')"], ",data": [[123]]}
+{"name": "is_null", "sql": "SELECT id FROM orders WHERE day IS NOT NULL AND id = 123", "errors": [], ",data": [[123]]}
+{"name": "is_null_static_exp", "sql": "SELECT id FROM orders WHERE NULL IS NULL AND id = 123", "errors": ["Static expression is not allowed: NULL IS NULL"], ",data": [[123]]}
