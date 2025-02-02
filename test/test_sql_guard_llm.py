@@ -59,10 +59,10 @@ class TestQueryUsingLLM:
 
     def _build_prompt(self, question: str, cnn):
         return f"""<instructions>
-        I have a table with the columns matching the json data below. The table name is {TestQueryUsingLLM._TABLE_NAME}.
-        you MUST query from this table only. No other tables are available. 
+        I have a table with the columns matching metadata below. The table name is {TestQueryUsingLLM._TABLE_NAME}.
+        you MUST query from this table only. No other tables are allowed. 
         Use only the following account_id: {self._ACCOUNT_ID} 
-        Please create a sql statement I can run on my db to get the answer to the question:
+        Please create an SQL statement I can run on my db to get the answer to the question:
         {question}
         SUPER IMPORTANT: You MUST follow the ALL OF the following rules when constructing the SQL. 
         Each one of them is important for the correct execution of the SQL - do not skip any of them:
@@ -108,7 +108,7 @@ class TestQueryUsingLLM:
 
     @pytest.mark.parametrize("question",
                              ["list all the table names in sqlite. Return only the name column"])
-    def test_sql_guard_flow(self, question: str, cnn, config):
+    def test_no_fix(self, question: str, cnn, config):
         prompt = self._build_prompt(question, cnn)
         sql = invoke_llm(prompt)
         print(sql)
