@@ -1,8 +1,8 @@
 import json
 import logging
 import os
-from logging.config import fileConfig
 from pathlib import Path
+from typing import Optional, List
 
 import boto3
 
@@ -20,12 +20,15 @@ def init_creds_from_file():
         os.environ["AWS_CONFIG_FILE"] = file_name
         logging.info("AWS config file set")
 
+def get_model_ids() -> List[str]:
+    return ["anthropic.claude-instant-v1", "anthropic.claude-v2:1", "anthropic.claude-v3"]
 
-def invoke_llm(prompt: str, model_id: str = _DEFAULT_MODEL_ID) -> str:
+
+def invoke_llm(system_prompt: Optional[None], user_prompt: str, model_id: str = _DEFAULT_MODEL_ID) -> str:
     logging.info(f"Going to invoke LLM. Model ID: {model_id}")
     bedrock_client = boto3.client(service_name='bedrock-runtime')
     response = bedrock_client.invoke_model(
-        body=_format_model_body(prompt, model_id),
+        body=_format_model_body(user_prompt, system_prompt, model_id),
         modelId=model_id,
     )
     response_json = json.loads(response.get("body").read())
@@ -34,11 +37,20 @@ def invoke_llm(prompt: str, model_id: str = _DEFAULT_MODEL_ID) -> str:
     return response_text
 
 
-def _format_model_body(prompt: str, model_id: str) -> str:
+def _format_model_body(prompt: str, system_prompt: Optional[str], model_id: str) -> str:
+    if system_prompt is None:
+        system_prompt = "You are a SQL generator helper"
     if "claude" in model_id:
         body = {
-            'prompt': f"\n\nHuman: {prompt}\nAssistant:",
-            'max_tokens_to_sample': 200,
+            "anthropic_version": "bedrock-2023-05-31",
+            "system": system_prompt,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            "max_tokens": 200,
             "temperature": 0.0,
         }
     elif "jamba" in model_id:
@@ -46,7 +58,7 @@ def _format_model_body(prompt: str, model_id: str) -> str:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a SQL generator helper"
+                    "content": system_prompt
                 },
                 {
                     "role": "user",
@@ -62,7 +74,7 @@ def _format_model_body(prompt: str, model_id: str) -> str:
 
 def _get_response_content(response_json: dict, model_id: str) -> str:
     if "claude" in model_id:
-        return response_json["completion"]
+        return response_json["content"][0]["text"]
     elif "jamba" in model_id:
         return response_json["choices"][0]["message"]["content"]
     else:
