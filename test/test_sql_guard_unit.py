@@ -45,7 +45,7 @@ class TestSQLErrors:
     def test_basic_sql_error(self):
         result = verify_sql("this is not an sql statement ",{})
         assert result["allowed"] == False
-        assert "Found unparsable section" in result["errors"][0]
+        assert "Invalid expression / Unexpected token" in result["errors"][0]["description"]
 
 
 class TestSingleTable:
@@ -88,19 +88,18 @@ class TestSingleTable:
               test.get("fix"), cnn=cnn, data=test.get("data"))
 
     @pytest.mark.parametrize("test_name", [t["name"] for t in _get_tests("orders_ai_generated.jsonl")])
-    def test_orders_from_file(self, test_name, config, cnn, ai_tests):
+    def test_orders_from_file_ai(self, test_name, config, cnn, ai_tests):
         test = ai_tests[test_name]
         _test_sql(test["sql"], config, set(test.get("errors", [])),
               test.get("fix"), cnn=cnn, data=test.get("data"))
 
-
-    @pytest.mark.parametrize("test_name", ["sub_select_restriction"])
+    @pytest.mark.parametrize("test_name", ["no_from_sub_select_lateral"])
     def test_by_name(self, test_name, config, cnn, tests):
         """Test by name. Use it to run a single test from tests/ai_tests by name"""
         test = tests[test_name]
+        logging.info(json.dumps(test, indent=4))
         _test_sql(test["sql"], config, set(test.get("errors", [])),
               test.get("fix"), cnn=cnn, data=test.get("data"))
-
 
 
 class TestJoinTable:
@@ -208,8 +207,8 @@ WHERE bool_col = True AND str_col1 = 'abc' AND str_col2 = 'def'""", config, cnn=
 WHERE bool_col = True AND str_col1 = 'def' AND str_col2 = 'abc'""", config,
                   {'Missing restriction for table: my_table column: str_col1 value: abc',
                    'Missing restriction for table: my_table column: str_col2 value: def'},
-                  ("SELECT COUNT() FROM my_table \n"
-                   "WHERE ( ( bool_col = True AND str_col1 = 'def' AND str_col2 = 'abc') AND "
+                  ("SELECT COUNT() FROM my_table "
+                   "WHERE ((bool_col = TRUE AND str_col1 = 'def' AND str_col2 = 'abc') AND "
                    "str_col1 = 'abc') AND str_col2 = 'def'"),
                   cnn=cnn, data=[(0,)]
                   )
