@@ -14,12 +14,6 @@ def set_evn():
     init_creds_from_file()
     yield
 
-@pytest.fixture(autouse=True)
-def sql_fluff_logging():
-    logging.getLogger('sqlfluff').setLevel(logging.WARNING)
-
-
-
 
 class TestQueryUsingLLM:
     _TABLE_NAME = "orders"

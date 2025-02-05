@@ -10,10 +10,6 @@ import pytest
 from sql_data_guard import verify_sql
 
 
-@pytest.fixture(autouse=True)
-def pytest_configure():
-    logging.getLogger('sqlfluff').setLevel(logging.WARNING)
-
 def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, dialect: str = "sqlite",
               cnn: Connection = None, data: list = None):
     result = verify_sql(sql, config, dialect)
