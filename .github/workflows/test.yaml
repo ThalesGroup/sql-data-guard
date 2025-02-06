@@ -3,6 +3,12 @@ on: [push, workflow_dispatch]
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read  # To read the repository contents (for `actions/checkout`)
+      id-token: write  # To use OIDC for accessing resources (if needed)
+      actions: read  # Allow the use of actions like `actions/cache`
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
