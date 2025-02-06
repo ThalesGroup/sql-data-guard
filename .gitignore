@@ -2,3 +2,5 @@
 do-not-commit/*
 .idea/*
 /aws/
+.DS_Store
+**/__pycache__/
