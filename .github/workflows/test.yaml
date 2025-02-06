@@ -16,15 +16,17 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-and-pytest-${{ hashFiles('requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
+          pip install pytest            
 
       - name: Run unit tests
         run: |
-          PYTHONPATH=src python pytest --color=yes test/test_sql_guard_unit.py
+          PYTHONPATH=src pytest --color=yes test/test_sql_guard_unit.py
