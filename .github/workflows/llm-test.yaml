@@ -40,11 +40,11 @@ jobs:
           pip install pytest            
           pip install boto3
 
-      - name: Get AWS Permissions
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/sql-data-guard-github-role-for-bedrock-invoke
-          aws-region: us-west-1
+#      - name: Get AWS Permissions
+#        uses: aws-actions/configure-aws-credentials@v2
+#        with:
+#          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/sql-data-guard-github-role-for-bedrock-invoke
+#          aws-region: us-west-1
 
       - name: Run unit tests
         run: |
