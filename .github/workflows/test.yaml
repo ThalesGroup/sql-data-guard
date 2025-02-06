@@ -17,8 +17,6 @@ jobs:
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-and-pytest-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-and-pytest-
 
       - name: Install dependencies
         if: steps.cache.outputs.cache-hit != 'true'
@@ -29,4 +27,4 @@ jobs:
 
       - name: Run unit tests
         run: |
-          PYTHONPATH=src pytest --color=yes test/test_sql_guard_unit.py
+          PYTHONPATH=src python pytest --color=yes test/test_sql_guard_unit.py
