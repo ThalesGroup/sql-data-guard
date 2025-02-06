@@ -47,6 +47,8 @@ jobs:
 #          aws-region: us-west-1
 
       - name: Run unit tests
+        env:
+          AWS_DEFAULT_REGION: us-east-1
         run: |
           source .venv/bin/activate
           PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_llm.py
