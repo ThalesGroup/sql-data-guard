@@ -12,21 +12,28 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Cache dependencies
-        id: cache
+      - name: Cache virtual environment
+        id: cache-venv
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          path: .venv  # Cache the virtual environment
+          key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-venv-            
+
+      - name: Create virtual environment
+        if: steps.cache-venv.outputs.cache-hit != 'true'  # Only create if cache is missing
+        run: python -m venv .venv
 
       - name: Install dependencies
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
+          source .venv/bin/activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest            
 
       - name: Run unit tests
         run: |
+          source .venv/bin/activate
           PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit.py
