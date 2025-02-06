@@ -1,11 +1,12 @@
-name: Run Unit Tests
-on: [push, workflow_dispatch]
+name: Run LLM integration Tests
+on: [workflow_dispatch]
 jobs:
   test:
     runs-on: ubuntu-latest
 
     permissions:
       contents: read  # To read the repository contents (for `actions/checkout`)
+      id-token: write  # To use OIDC for accessing resources (if needed)
       actions: read  # Allow the use of actions like `actions/cache`
 
     steps:
@@ -22,9 +23,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv  # Cache the virtual environment
-          key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
+          key: ${{ runner.os }}-llm-venv-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-venv-            
+            ${{ runner.os }}-llm-venv-            
 
       - name: Create virtual environment
         if: steps.cache-venv.outputs.cache-hit != 'true'  # Only create if cache is missing
@@ -37,8 +38,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest            
+          pip install boto3
 
       - name: Run unit tests
         run: |
           source .venv/bin/activate
-          PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit.py
+          PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_llm.py
