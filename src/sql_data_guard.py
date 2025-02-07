@@ -1,20 +1,8 @@
 import logging
-from typing import Optional, List, Generator, NamedTuple, Set, Type
+from typing import Optional, List, Generator, Set, Type
 
 import sqlglot
 import sqlglot.expressions as expr
-
-
-class _TableRef(NamedTuple):
-    """
-    Represents a reference to a table in the SQL query.
-
-    Attributes:
-        table_name (str): The name of the table.
-        db_name (Optional[str]): The name of the database. Defaults to None.
-    """
-    table_name: str
-    db_name: Optional[str] = None
 
 
 class _VerificationContext:
@@ -103,7 +91,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
 
 
 def _verify_where_clause(result: _VerificationContext, select_statement: expr.Select,
-                         from_tables: List[_TableRef]):
+                         from_tables: List[expr.Table]):
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
         where_clause = select_statement.find(expr.Where)
@@ -112,7 +100,7 @@ def _verify_where_clause(result: _VerificationContext, select_statement: expr.Se
         and_exps = list(_split_to_expressions(where_clause.this, expr.And))
     if not _verify_static_expression(result, and_exps):
         return
-    for t in [c_t for c_t in result.config["tables"] if c_t["table_name"] in [t.table_name for t in from_tables]]:
+    for t in [c_t for c_t in result.config["tables"] if c_t["table_name"] in [t.name for t in from_tables]]:
         for idx, r in enumerate(t.get("restrictions", [])):
             found = False
             for sub_exp in and_exps:
@@ -150,10 +138,6 @@ def _has_static_expression(context: _VerificationContext, exp: expr.Expression) 
                 f"Static expression is not allowed: {sub_exp.sql()}", False)
             result = True
     return result
-
-
-def _get_ref_table(t: expr.Table) -> _TableRef:
-    return _TableRef(table_name=t.name, db_name=t.db)
 
 
 def _verify_restriction(restriction: dict, exp: expr.Expression) -> bool:
@@ -194,10 +178,10 @@ def _verify_select_statement(select_statement: expr.Select,
     for t in from_tables:
         found = False
         for config_t in context.config["tables"]:
-            if t.table_name == config_t["table_name"] or t.table_name in context.dynamic_tables:
+            if t.name == config_t["table_name"] or t.name in context.dynamic_tables:
                 found = True
         if not found:
-            context.add_error(f"Table {t.table_name} is not allowed", False)
+            context.add_error(f"Table {t.name} is not allowed", False)
     if not context.can_fix:
         return select_statement
     _verify_select_clause(context, select_statement, from_tables)
@@ -207,7 +191,7 @@ def _verify_select_statement(select_statement: expr.Select,
 
 def _verify_select_clause(context: _VerificationContext,
                           select_clause: expr.Select,
-                          from_tables: List[_TableRef]):
+                          from_tables: List[expr.Table]):
     to_remove = []
     for e in select_clause.expressions:
         if not _verify_select_clause_element(from_tables, context, e):
@@ -217,7 +201,7 @@ def _verify_select_clause(context: _VerificationContext,
     if len(select_clause.expressions) == 0:
         context.add_error("No legal elements in SELECT clause", False)
 
-def _verify_select_clause_element(from_tables: List[_TableRef], context: _VerificationContext,
+def _verify_select_clause_element(from_tables: List[expr.Table], context: _VerificationContext,
                                   e: expr.Expression):
     if isinstance(e, expr.Column):
         if not _verify_col(e, from_tables, context):
@@ -226,7 +210,7 @@ def _verify_select_clause_element(from_tables: List[_TableRef], context: _Verifi
         context.add_error("SELECT * is not allowed", True)
         for t in from_tables:
             for config_t in context.config["tables"]:
-                if t.table_name == config_t["table_name"]:
+                if t.name == config_t["table_name"]:
                     for c in config_t["columns"]:
                         e.parent.set("expressions", e.parent.expressions + [sqlglot.parse_one(c)])
         return False
@@ -242,7 +226,7 @@ def _verify_select_clause_element(from_tables: List[_TableRef], context: _Verifi
                 return False
     return True
 
-def _verify_col(col: expr.Column, from_tables: List[_TableRef], context: _VerificationContext) -> bool:
+def _verify_col(col: expr.Column, from_tables: List[expr.Table], context: _VerificationContext) -> bool:
     """
     Verifies if a column reference is allowed based on the provided tables and context.
 
@@ -262,46 +246,29 @@ def _verify_col(col: expr.Column, from_tables: List[_TableRef], context: _Verifi
     return True
 
 
-_TRINO_FUNCTION_MAX_PARAM_1 = {"REDUCE", "TRANSFORM", "TRANSFORM_KEYS", "TRANSFORM_VALUES", "MAP_FILTER", "FILTER",
-                               "ALL_MATCH", "ANY_MATCH", "NONE_MATCH"}
-
-def _get_max_param_index(func_name: str, el: dict, dialect: str) -> int:
-    """
-    Get the number of parameters for a function to search in for column reference
-    :param func_name: function name
-    :param el: function element
-    :param dialect: sql dialect
-    :return: -1 if all parameters should be checked, 0 if no parameters should be checked, or max index  parameter to check
-    """
-    if dialect in {"trino", "athena"}:
-        if func_name.upper() in _TRINO_FUNCTION_MAX_PARAM_1:
-            return 1
-    return -1
-
-
-def _find_column(col_name: str, from_tables: List[_TableRef], result: _VerificationContext) -> bool:
+def _find_column(col_name: str, from_tables: List[expr.Table], result: _VerificationContext) -> bool:
     """
     Finds a column in the given tables based on the provided column name.
 
     Args:
         col_name (str): The name of the column to find.
-        from_tables (List[_TableRef]): The list of tables to search within.
+        from_tables (List[expr.Table]): The list of tables to search within.
         result (_VerificationContext): The context for verification.
 
     Returns:
         bool: True if the column is found in any of the tables, False otherwise.
     """
-    if all(t.table_name in result.dynamic_tables for t in from_tables):
+    if all(t.name in result.dynamic_tables for t in from_tables):
         return True
     for t in from_tables:
         for config_t in result.config["tables"]:
-            if t.table_name == config_t["table_name"]:
+            if t.name == config_t["table_name"]:
                 if col_name in config_t["columns"]:
                     return True
     return False
 
 
-def _get_from_clause_tables(select_clause: expr.Select, context: _VerificationContext) -> List[_TableRef]:
+def _get_from_clause_tables(select_clause: expr.Select, context: _VerificationContext) -> List[expr.Table]:
     """
         Extracts table references from the FROM clause of an SQL query.
 
@@ -318,10 +285,10 @@ def _get_from_clause_tables(select_clause: expr.Select, context: _VerificationCo
     for clause in [from_clause, join_clause]:
         if clause:
             for t in _find_direct(clause, expr.Table):
-                table_ref = _get_ref_table(t)
                 if t.alias != "":
                     context.dynamic_tables.add(t.alias)
-                result.append(table_ref)
+                if isinstance(t, expr.Table):
+                    result.append(t)
             for j in _find_direct(clause, expr.Subquery):
                 if j.alias != "":
                     context.dynamic_tables.add(j.alias)
