@@ -19,7 +19,8 @@ jobs:
       - name: Install test dependencies
         run: |
           source .venv/bin/activate
-          pip install pytest            
+          pip install pytest
+          pip install boto3
 
       - name: Get AWS Permissions
         uses: aws-actions/configure-aws-credentials@v2
