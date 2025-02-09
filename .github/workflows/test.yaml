@@ -12,30 +12,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Update Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
+      - name: Update python and install dependencies
+        uses: ./.github/actions/cached-requirements
 
-      - name: Cache virtual environment
-        id: cache-venv
-        uses: actions/cache@v4
-        with:
-          path: .venv  # Cache the virtual environment
-          key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-venv-            
-
-      - name: Create virtual environment
-        if: steps.cache-venv.outputs.cache-hit != 'true'  # Only create if cache is missing
-        run: python -m venv .venv
-
-      - name: Install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+      - name: Install test dependencies
         run: |
           source .venv/bin/activate
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
           pip install pytest            
 
       - name: Run unit tests
