@@ -68,7 +68,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
     Args:
         sql (str): The SQL query to verify.
         config (dict): The configuration specifying allowed tables, columns, and restrictions.
-        dialect (str, optional): The SQL dialect to use for parsing. Defaults to "ansi".
+        dialect (str, optional): The SQL dialect to use for parsing
 
     Returns:
         dict: A dictionary containing:

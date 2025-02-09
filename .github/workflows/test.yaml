@@ -18,9 +18,15 @@ jobs:
       - name: Install test dependencies
         run: |
           source .venv/bin/activate
-          pip install pytest            
+          pip install pytest
+          pip install flask
 
       - name: Run unit tests
         run: |
           source .venv/bin/activate
           PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit.py
+
+      - name: Run REST API unit tests
+        run: |
+          source .venv/bin/activate
+          PYTHONPATH=src python -m pytest --color=yes test/test_rest_api_unit.py
