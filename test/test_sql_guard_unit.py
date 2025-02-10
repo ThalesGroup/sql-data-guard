@@ -16,9 +16,9 @@ def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, 
     if errors is None:
         assert result["errors"] == set()
     else:
-        assert result["errors"] == set(errors)
+        assert set(result["errors"]) == set(errors)
     if fix is None:
-        assert result["fixed"] is None
+        assert result.get("fixed") is None
         sql_to_use = sql
     else:
         assert result["fixed"] == fix

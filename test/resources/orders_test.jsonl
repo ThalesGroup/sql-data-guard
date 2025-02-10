@@ -50,3 +50,5 @@
 {"name": "is_null", "sql": "SELECT id FROM orders WHERE day IS NOT NULL AND id = 123", "errors": [], ",data": [[123]]}
 {"name": "is_null_static_exp", "sql": "SELECT id FROM orders WHERE NULL IS NULL AND id = 123", "errors": ["Static expression is not allowed: NULL IS NULL"], ",data": [[123]]}
 {"name": "not_op", "sql": "SELECT id FROM orders WHERE NOT id = 123", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (NOT id = 123) AND id = 123", "data": []}
+{"name": "delete_op", "sql": "DELETE FROM orders", "errors": ["Could not find a select statement"]}
+{"name": "drop_op", "sql": "DROP orders", "errors": ["Could not find a select statement"]}
