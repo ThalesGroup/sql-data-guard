@@ -99,7 +99,7 @@ sql-data-guard is also available as a Docker image, which can be used to run the
 To run the sql-data-guard Docker container, use the following command:
 
 ```bash
-docker run -d --name sql-data-guard -p 8080:8080 imperva/sql-data-guard:latest
+docker run -d --name sql-data-guard -p 8080:8080 ThalesGroup/sql-data-guard:latest
 
 ### Calling the Docker Container Using REST API
 
