@@ -5,9 +5,10 @@ jobs:
 
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write
     steps:
-    - name: Checkout repository
+    - name: Checkout
       uses: actions/checkout@v4
 
     - name: Install pypa/build
