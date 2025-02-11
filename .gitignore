@@ -4,3 +4,5 @@ do-not-commit/*
 /aws/
 .DS_Store
 **/__pycache__/
+dist/**
+**/*.egg-info/

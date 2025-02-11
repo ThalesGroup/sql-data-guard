@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = false
+package-dir = {"" = "src"}
+
+[project]
+name = "sql-data-guard"
+version = "0.0.1"
+authors = [
+  { name="Imperva - Threat Reseach Infra", email="ww.dis.imperva.threat-research-infra@thalesgroup.com" },
+]
+description = "Safety Layer for LLM Database Interactions"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = {file = "LICENSE.md"}
+
+[project.urls]
+Homepage = "https://github.com/imperva/sql-data-guard"
+Issues = "https://github.com/imperva/sql-data-guard/issues"

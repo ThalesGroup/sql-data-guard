@@ -1,6 +1,6 @@
 import pytest
 
-from rest.sql_data_guard_rest import app
+from sql_data_guard.rest import app
 
 class TestRestAppErrors:
     def test_verify_sql_method_not_allowed(self):
