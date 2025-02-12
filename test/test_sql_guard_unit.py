@@ -17,6 +17,10 @@ def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, 
         assert result["errors"] == set()
     else:
         assert set(result["errors"]) == set(errors)
+    if len(result["errors"]) > 0:
+        assert result["risk"] > 0
+    else:
+        assert result["risk"] == 0
     if fix is None:
         assert result.get("fixed") is None
         sql_to_use = sql
@@ -41,7 +45,9 @@ class TestSQLErrors:
     def test_basic_sql_error(self):
         result = verify_sql("this is not an sql statement ",{})
         assert result["allowed"] == False
-        assert "Invalid expression / Unexpected token" in result["errors"][0]["description"]
+        assert len(result["errors"]) == 1
+        error = next(iter(result["errors"]))
+        assert "Invalid expression / Unexpected token" in error
 
 
 class TestSingleTable:
@@ -96,6 +102,11 @@ class TestSingleTable:
         logging.info(json.dumps(test, indent=4))
         _test_sql(test["sql"], config, set(test.get("errors", [])),
               test.get("fix"), cnn=cnn, data=test.get("data"))
+
+    def test_risk(self, config):
+        result = verify_sql("SELECT * FROM orders", config)
+        assert result["risk"] > 0
+
 
 
 class TestJoinTable:

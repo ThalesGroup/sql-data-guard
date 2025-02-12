@@ -25,15 +25,17 @@ class _VerificationContext:
         self._config = config
         self._dynamic_tables: Set[str] = set()
         self._dialect = dialect
+        self._risk: List[float] = []
 
     @property
     def can_fix(self) -> bool:
         return self._can_fix
 
-    def add_error(self, error: str, can_fix: bool = True):
+    def add_error(self, error: str, can_fix: bool, risk: float):
         self._errors.add(error)
         if not can_fix:
             self._can_fix = False
+        self._risk.append(risk)
 
     @property
     def errors(self) -> Set[str]:
@@ -60,6 +62,10 @@ class _VerificationContext:
     def dialect(self) -> str:
         return self._dialect
 
+    @property
+    def risk(self) -> float:
+        return sum(self._risk) / len(self._risk) if len(self._risk) > 0 else 0
+
 
 def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
     """
@@ -75,19 +81,23 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             - "allowed" (bool): Whether the query is allowed to run.
             - "errors" (List[str]): List of errors found during verification.
             - "fixed" (Optional[str]): The fixed query if modifications were made.
+            - "risk" (float): Verification risk score (0 - no risk, 1 - high risk)
     """
+    result = _VerificationContext(config, dialect)
     try:
         parsed = sqlglot.parse_one(sql, dialect=dialect)
     except sqlglot.errors.ParseError as e:
         logging.error(f"SQL: {sql}\nError parsing SQL: {e}")
-        return { "allowed": False, "errors": e.errors}
-    if not isinstance(parsed, expr.Select):
-        return {"allowed": False, "errors": ["Could not find a select statement"]}
-    result = _VerificationContext(config, dialect)
-    _verify_select_statement(parsed, result)
+        result.add_error(f"Error parsing sql: {e}", False, 0.9)
+        parsed = None
+    if parsed:
+        if not isinstance(parsed, expr.Select):
+            result.add_error("Could not find a select statement", False, 0.7)
+        else:
+            _verify_select_statement(parsed, result)
     if result.can_fix and len(result.errors) > 0:
         result.fixed = parsed.sql()
-    return { "allowed": len(result.errors) == 0, "errors": result.errors, "fixed": result.fixed }
+    return { "allowed": len(result.errors) == 0, "errors": result.errors, "fixed": result.fixed, "risk": result.risk}
 
 
 def _verify_where_clause(result: _VerificationContext, select_statement: expr.Select,
@@ -108,7 +118,9 @@ def _verify_where_clause(result: _VerificationContext, select_statement: expr.Se
                     found = True
                     break
             if not found:
-                result.add_error(f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}")
+                result.add_error(
+                    f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}",
+                    True, 0.5)
                 value = f"'{r['value']}'" if isinstance(r["value"], str) else r["value"]
                 new_condition = sqlglot.parse_one(f"{r['column']} = {value}", dialect=result.dialect)
                 if where_clause is None:
@@ -135,7 +147,7 @@ def _has_static_expression(context: _VerificationContext, exp: expr.Expression) 
             result = _has_static_expression(context, sub_exp)
         elif not sub_exp.find(expr.Column):
             context.add_error(
-                f"Static expression is not allowed: {sub_exp.sql()}", False)
+                f"Static expression is not allowed: {sub_exp.sql()}", False, 0.9)
             result = True
     return result
 
@@ -181,7 +193,7 @@ def _verify_select_statement(select_statement: expr.Select,
             if t.name == config_t["table_name"] or t.name in context.dynamic_tables:
                 found = True
         if not found:
-            context.add_error(f"Table {t.name} is not allowed", False)
+            context.add_error(f"Table {t.name} is not allowed", False, 1)
     if not context.can_fix:
         return select_statement
     _verify_select_clause(context, select_statement, from_tables)
@@ -199,7 +211,7 @@ def _verify_select_clause(context: _VerificationContext,
     for e in to_remove:
         select_clause.expressions.remove(e)
     if len(select_clause.expressions) == 0:
-        context.add_error("No legal elements in SELECT clause", False)
+        context.add_error("No legal elements in SELECT clause", False, 0.5)
 
 def _verify_select_clause_element(from_tables: List[expr.Table], context: _VerificationContext,
                                   e: expr.Expression):
@@ -207,7 +219,7 @@ def _verify_select_clause_element(from_tables: List[expr.Table], context: _Verif
         if not _verify_col(e, from_tables, context):
             return False
     elif isinstance(e, expr.Star):
-        context.add_error("SELECT * is not allowed", True)
+        context.add_error("SELECT * is not allowed", True, 0.1)
         for t in from_tables:
             for config_t in context.config["tables"]:
                 if t.name == config_t["table_name"]:
@@ -241,7 +253,8 @@ def _verify_col(col: expr.Column, from_tables: List[expr.Table], context: _Verif
     if col.table == "sub_select" or  col.table != "" and col.table in context.dynamic_tables:
         pass
     elif not _find_column(col.name, from_tables, context):
-        context.add_error(f"Column {col.name} is not allowed. Column removed from SELECT clause")
+        context.add_error(f"Column {col.name} is not allowed. Column removed from SELECT clause",
+                          True,0.3)
         return False
     return True
 
