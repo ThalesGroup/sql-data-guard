@@ -40,7 +40,7 @@ class TestRestAppVerifySql:
                                         json={"sql": "SELECT id FROM orders WHERE id = 123",
                                               "config": config})
         assert result.status_code == 200
-        assert result.json == {'allowed': True, 'errors': [], 'fixed': None}
+        assert result.json == {'allowed': True, 'errors': [], 'fixed': None, "risk": 0}
 
 
     def test_verify_sql_error(self, config):
@@ -51,5 +51,6 @@ class TestRestAppVerifySql:
         assert result.json == {
             'allowed': False,
             'errors': ['Column another_col is not allowed. Column removed from SELECT clause'],
-            'fixed': 'SELECT id FROM orders WHERE id = 123'
+            'fixed': 'SELECT id FROM orders WHERE id = 123',
+            'risk': 0.3
        }
