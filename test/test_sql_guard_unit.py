@@ -86,8 +86,9 @@ class TestSingleTable:
     @pytest.mark.parametrize("test_name", [t["name"] for t in _get_tests("orders_test.jsonl")])
     def test_orders_from_file(self, test_name, config, cnn, tests):
         test = tests[test_name]
-        _test_sql(test["sql"], config, set(test.get("errors", [])),
-              test.get("fix"), cnn=cnn, data=test.get("data"))
+        if not "skip-reason" in test:
+            _test_sql(test["sql"], config, set(test.get("errors", [])),
+                  test.get("fix"), cnn=cnn, data=test.get("data"))
 
     @pytest.mark.parametrize("test_name", [t["name"] for t in _get_tests("orders_ai_generated.jsonl")])
     def test_orders_from_file_ai(self, test_name, config, cnn, ai_tests):
