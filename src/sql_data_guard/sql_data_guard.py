@@ -91,16 +91,20 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
         result.add_error(f"Error parsing sql: {e}", False, 0.9)
         parsed = None
     if parsed:
-        if not isinstance(parsed, expr.Select):
-            result.add_error("Could not find a select statement", False, 0.7)
+        if isinstance(parsed, expr.Command):
+            result.add_error(f"{parsed.name} statement is not allowed", False, 0.9)
+        elif isinstance(parsed, expr.Delete):
+            result.add_error(f"{parsed.key.upper()} statement is not allowed", False, 0.9)
+        elif isinstance(parsed, expr.Query):
+            _verify_query_statement(parsed, result)
         else:
-            _verify_select_statement(parsed, result)
+            result.add_error("Could not find a query statement", False, 0.7)
     if result.can_fix and len(result.errors) > 0:
         result.fixed = parsed.sql()
     return { "allowed": len(result.errors) == 0, "errors": result.errors, "fixed": result.fixed, "risk": result.risk}
 
 
-def _verify_where_clause(result: _VerificationContext, select_statement: expr.Select,
+def _verify_where_clause(result: _VerificationContext, select_statement: expr.Query,
                          from_tables: List[expr.Table]):
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
@@ -181,12 +185,16 @@ def _verify_restriction(restriction: dict, exp: expr.Expression) -> bool:
             return exp.right.this == str(restriction["value"])
     return False
 
-def _verify_select_statement(select_statement: expr.Select,
-                             context: _VerificationContext):
-    for cte in select_statement.ctes:
+def _verify_query_statement(query_statement: expr.Query,
+                            context: _VerificationContext):
+    if isinstance(query_statement, expr.Union):
+        _verify_query_statement(query_statement.left, context)
+        _verify_query_statement(query_statement.right, context)
+        return
+    for cte in query_statement.ctes:
         context.dynamic_tables.add(cte.alias)
-        _verify_select_statement(cte.this, context)
-    from_tables = _get_from_clause_tables(select_statement, context)
+        _verify_query_statement(cte.this, context)
+    from_tables = _get_from_clause_tables(query_statement, context)
     for t in from_tables:
         found = False
         for config_t in context.config["tables"]:
@@ -195,14 +203,14 @@ def _verify_select_statement(select_statement: expr.Select,
         if not found:
             context.add_error(f"Table {t.name} is not allowed", False, 1)
     if not context.can_fix:
-        return select_statement
-    _verify_select_clause(context, select_statement, from_tables)
-    _verify_where_clause(context, select_statement, from_tables)
-    return select_statement
+        return query_statement
+    _verify_select_clause(context, query_statement, from_tables)
+    _verify_where_clause(context, query_statement, from_tables)
+    return query_statement
 
 
 def _verify_select_clause(context: _VerificationContext,
-                          select_clause: expr.Select,
+                          select_clause: expr.Query,
                           from_tables: List[expr.Table]):
     to_remove = []
     for e in select_clause.expressions:
@@ -281,7 +289,7 @@ def _find_column(col_name: str, from_tables: List[expr.Table], result: _Verifica
     return False
 
 
-def _get_from_clause_tables(select_clause: expr.Select, context: _VerificationContext) -> List[expr.Table]:
+def _get_from_clause_tables(select_clause: expr.Query, context: _VerificationContext) -> List[expr.Table]:
     """
         Extracts table references from the FROM clause of an SQL query.
 
@@ -305,12 +313,12 @@ def _get_from_clause_tables(select_clause: expr.Select, context: _VerificationCo
             for j in _find_direct(clause, expr.Subquery):
                 if j.alias != "":
                     context.dynamic_tables.add(j.alias)
-                _verify_select_statement(j.this, context)
+                _verify_query_statement(j.this, context)
     if join_clause:
         for j in _find_direct(clause, expr.Lateral):
             if j.alias != "":
                 context.dynamic_tables.add(j.alias)
-            _verify_select_statement(j.this.find(expr.Select), context)
+            _verify_query_statement(j.this.find(expr.Select), context)
     return result
 
 
