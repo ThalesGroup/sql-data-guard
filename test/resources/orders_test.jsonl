@@ -18,6 +18,7 @@
 {"name": "table_prefix", "sql": "SELECT o.id FROM orders AS o WHERE id = 123", "errors": [], "data": [[123]]}
 {"name": "table_and_db_prefix", "sql": "SELECT orders_db.orders.id FROM orders_db.orders WHERE orders_db.orders.id = 123", "errors": [], "data": [[123]]}
 {"name": "table_alias", "sql": "SELECT a.id FROM orders_db.orders AS a WHERE a.id = 123", "errors": [], "data": [[123]]}
+{"name": "table_alias_illegal_col", "sql": "SELECT a.id, a.status FROM orders AS a WHERE a.id = 123", "errors": ["Column status is not allowed. Column removed from SELECT clause"], "fix": "SELECT a.id FROM orders AS a WHERE a.id = 123", "data": [[123]]}
 {"name": "bad_restriction", "sql": "SELECT id FROM orders WHERE id = 123 OR id = 234", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (id = 123 OR id = 234) AND id = 123"}
 {"name": "bracketed", "sql": "SELECT id FROM orders WHERE (id = 123)", "errors": [], "data": [[123]]}
 {"name": "double_bracketed", "sql": "SELECT id FROM orders WHERE ((id = 123))", "errors": [], "data": [[123]]}

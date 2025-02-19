@@ -306,8 +306,6 @@ def _get_from_clause_tables(select_clause: expr.Query, context: _VerificationCon
     for clause in [from_clause, join_clause]:
         if clause:
             for t in _find_direct(clause, expr.Table):
-                if t.alias != "":
-                    context.dynamic_tables.add(t.alias)
                 if isinstance(t, expr.Table):
                     result.append(t)
             for j in _find_direct(clause, expr.Subquery):
