@@ -42,7 +42,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=workflow_dispatch,ref=refs/tags/${{ github.event.inputs.version }}
+            ${{ github.event.inputs.version || github.ref_name }}
 
       - name: Set up QEMU (for multi-arch support)
         uses: docker/setup-qemu-action@v3
