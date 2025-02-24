@@ -33,9 +33,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref
             type=semver,pattern={{version}}
-            type=tag
 
       - name: Set up QEMU (for multi-arch support)
         uses: docker/setup-qemu-action@v3
