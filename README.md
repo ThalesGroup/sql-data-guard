@@ -99,21 +99,21 @@ sql-data-guard is also available as a Docker image, which can be used to run the
 To run the sql-data-guard Docker container, use the following command:
 
 ```bash
-docker run -d --name sql-data-guard -p 8080:8080 ThalesGroup/sql-data-guard:latest
+docker run -d --name sql-data-guard -p 5000:5000 ghcr.io/thalesgroup/sql-data-guard
 
 ### Calling the Docker Container Using REST API
 
 Once the `sql-data-guard` Docker container is running, you can interact with it using its REST API. Below is an example of how to verify an SQL query using `curl`:
 
 ```bash
-curl -X POST http://localhost:8080/verify_sql \
+curl -X POST http://localhost:5000/verify-sql \
      -H "Content-Type: application/json" \
      -d '{
-           "query": "SELECT * FROM orders WHERE account_id = 123",
+           "sql": "SELECT * FROM orders WHERE account_id = 123",
            "config": {
              "tables": [
                {
-                 "name": "orders",
+                 "table_name": "orders",
                  "columns": ["id", "product_name", "account_id"],
                  "restrictions": [{"column": "account_id", "value": 123}]
                }             
