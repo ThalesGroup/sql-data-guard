@@ -22,10 +22,14 @@
 {"name": "bad_restriction", "sql": "SELECT id FROM orders WHERE id = 123 OR id = 234", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (id = 123 OR id = 234) AND id = 123"}
 {"name": "bracketed", "sql": "SELECT id FROM orders WHERE (id = 123)", "errors": [], "data": [[123]]}
 {"name": "double_bracketed", "sql": "SELECT id FROM orders WHERE ((id = 123))", "errors": [], "data": [[123]]}
-{"name": "static_exp", "sql": "SELECT id FROM orders WHERE id = 123 OR (1 = 1)", "errors": ["Static expression is not allowed: 1 = 1"]}
-{"name": "two_static_exps", "sql": "SELECT id FROM orders WHERE id = 123 OR (1 = 1) OR (2 = 2)", "errors": ["Static expression is not allowed: 1 = 1", "Static expression is not allowed: 2 = 2"]}
-{"name": "nested_static_exp", "sql": "SELECT id FROM orders WHERE id = 123 OR (id = 1 OR TRUE)", "errors": ["Static expression is not allowed: TRUE"]}
-{"name": "nested_static_exp2", "sql": "SELECT id FROM orders WHERE id = 123 AND (product_name = 'product1' OR (TRUE))", "errors": ["Static expression is not allowed: TRUE"]}
+{"name": "static_exp", "sql": "SELECT id FROM orders WHERE id = 123 OR 1 = 1", "errors": ["Static expression is not allowed: 1 = 1"], "fix": "SELECT id FROM orders WHERE id = 123", "data": [[123]]}
+{"name": "only_static_exp", "sql": "SELECT id FROM orders WHERE 1 = 1", "errors": ["Static expression is not allowed: 1 = 1", "Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE id = 123", "data": [[123]]}
+{"name": "only_static_exp_false", "sql": "SELECT id FROM orders WHERE 1 = 0", "errors": ["Static expression is not allowed: 1 = 0", "Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (FALSE) AND id = 123", "data": []}
+{"name": "static_exp_paren", "sql": "SELECT id FROM orders WHERE id = 123 OR (1 = 1)", "errors": ["Static expression is not allowed: 1 = 1"], "fix": "SELECT id FROM orders WHERE id = 123", "data": [[123]]}
+{"name": "two_static_exps", "sql": "SELECT id FROM orders WHERE id = 123 OR (1 = 1) OR (2 = 2)", "errors": ["Static expression is not allowed: 1 = 1", "Static expression is not allowed: 2 = 2"], "fix": "SELECT id FROM orders WHERE id = 123", "data": [[123]]}
+{"name": "static_exp_with_missing_restriction", "sql": "SELECT id, name FROM orders WHERE 1 = 1", "errors": ["Column name is not allowed. Column removed from SELECT clause", "Static expression is not allowed: 1 = 1", "Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE id = 123", "data": [[123]]}
+{"name": "nested_static_exp", "sql": "SELECT id FROM orders WHERE id = 123 OR (id = 1 OR TRUE)", "errors": ["Static expression is not allowed: TRUE", "Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (id = 1 OR id = 123) AND id = 123", "data": [[123]]}
+{"name": "nested_static_exp2", "sql": "SELECT id FROM orders WHERE id = 123 AND (product_name = 'product1' OR (TRUE))", "errors": ["Static expression is not allowed: TRUE"], "fix": "SELECT id FROM orders WHERE id = 123 AND product_name = 'product1'", "data": [[123]]}
 {"name": "multiple_brackets_exp", "sql": "SELECT id FROM orders WHERE (( ( (id = 123))))", "errors": [], "data": [[123]]}
 {"name": "with_clause", "sql": "WITH data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM data", "errors": [], "data": [[123]]}
 {"name": "nested_with_clause", "sql": "WITH data AS (WITH sub_data AS (SELECT id FROM orders) SELECT id FROM sub_data) SELECT id FROM data", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "WITH data AS (WITH sub_data AS (SELECT id FROM orders WHERE id = 123) SELECT id FROM sub_data) SELECT id FROM data"}
@@ -48,10 +52,10 @@
 {"name": "no_from_sub_select", "sql": "SELECT id, sub.col FROM orders CROSS JOIN (SELECT 11 AS col) AS sub WHERE id = 123", "errors": [], "data": [[123, 11]]}
 {"name": "no_from_sub_select_lateral", "sql": "SELECT id, sub.col FROM orders CROSS JOIN LATERAL (SELECT 11 AS col) AS sub WHERE id = 123", "errors": []}
 {"name": "day_between", "sql": "SELECT id FROM orders WHERE DATE(day) BETWEEN DATE('2000-01-01') AND DATE('now','-1 day') AND id = 123", "errors": [], "data": [[123]]}
-{"name": "day_between_static_exp", "sql": "SELECT id FROM orders WHERE DATE('2000-01-01') BETWEEN DATE('2000-01-01') AND DATE('2000-01-01') AND id = 123", "errors": ["Static expression is not allowed: DATE('2000-01-01') BETWEEN DATE('2000-01-01') AND DATE('2000-01-01')"], ",data": [[123]]}
+{"name": "day_between_static_exp", "sql": "SELECT id FROM orders WHERE DATE('2000-01-01') BETWEEN DATE('2000-01-01') AND DATE('2000-01-01') OR id = 123", "errors": ["Static expression is not allowed: DATE('2000-01-01') BETWEEN DATE('2000-01-01') AND DATE('2000-01-01')"], "fix": "SELECT id FROM orders WHERE id = 123" ,"data": [[123]]}
 {"name": "day_in_func", "sql": "SELECT id FROM orders WHERE LOWER(LOWER(LOWER(day))) <> '' AND id = 123", "errors": [], "data": [[123]]}
-{"name": "is_null", "sql": "SELECT id FROM orders WHERE day IS NOT NULL AND id = 123", "errors": [], ",data": [[123]]}
-{"name": "is_null_static_exp", "sql": "SELECT id FROM orders WHERE NULL IS NULL AND id = 123", "errors": ["Static expression is not allowed: NULL IS NULL"], ",data": [[123]]}
+{"name": "is_null", "sql": "SELECT id FROM orders WHERE day IS NOT NULL AND id = 123", "errors": []}
+{"name": "is_null_static_exp", "sql": "SELECT id FROM orders WHERE NULL IS NULL AND id = 123", "errors": ["Static expression is not allowed: NULL IS NULL"], "fix": "SELECT id FROM orders WHERE id = 123", "data": [[123]]}
 {"name": "not_op", "sql": "SELECT id FROM orders WHERE NOT id = 123", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (NOT id = 123) AND id = 123", "data": []}
 {"name": "delete_op", "sql": "DELETE FROM orders", "errors": ["DELETE statement is not allowed"]}
 {"name": "drop_op", "sql": "DROP orders", "errors": ["DROP statement is not allowed"]}

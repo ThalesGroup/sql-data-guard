@@ -3,6 +3,7 @@ from typing import Optional, List, Generator, Set, Type
 
 import sqlglot
 import sqlglot.expressions as expr
+from sqlglot.optimizer.simplify import simplify
 
 
 class _VerificationContext:
@@ -104,7 +105,13 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
     return { "allowed": len(result.errors) == 0, "errors": result.errors, "fixed": result.fixed, "risk": result.risk}
 
 
-def _verify_where_clause(result: _VerificationContext, select_statement: expr.Query,
+def _verify_where_clause(context: _VerificationContext, select_statement: expr.Query,
+                         from_tables: List[expr.Table]):
+    _verify_static_expression(select_statement, context)
+    _verify_restrictions(select_statement, context, from_tables)
+
+def _verify_restrictions(select_statement: expr.Query,
+                         context: _VerificationContext,
                          from_tables: List[expr.Table]):
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
@@ -112,9 +119,7 @@ def _verify_where_clause(result: _VerificationContext, select_statement: expr.Qu
         and_exps = []
     else:
         and_exps = list(_split_to_expressions(where_clause.this, expr.And))
-    if not _verify_static_expression(result, and_exps):
-        return
-    for t in [c_t for c_t in result.config["tables"] if c_t["table_name"] in [t.name for t in from_tables]]:
+    for t in [c_t for c_t in context.config["tables"] if c_t["table_name"] in [t.name for t in from_tables]]:
         for idx, r in enumerate(t.get("restrictions", [])):
             found = False
             for sub_exp in and_exps:
@@ -122,11 +127,11 @@ def _verify_where_clause(result: _VerificationContext, select_statement: expr.Qu
                     found = True
                     break
             if not found:
-                result.add_error(
+                context.add_error(
                     f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}",
                     True, 0.5)
                 value = f"'{r['value']}'" if isinstance(r["value"], str) else r["value"]
-                new_condition = sqlglot.parse_one(f"{r['column']} = {value}", dialect=result.dialect)
+                new_condition = sqlglot.parse_one(f"{r['column']} = {value}", dialect=context.dialect)
                 if where_clause is None:
                     where_clause = expr.Where(this=new_condition)
                     select_statement.set("where", where_clause)
@@ -135,24 +140,37 @@ def _verify_where_clause(result: _VerificationContext, select_statement: expr.Qu
                                                                                  expression=new_condition)))
 
 
-def _verify_static_expression(context: _VerificationContext, exps: List[expr.Expression]) -> bool:
+def _verify_static_expression(select_statement: expr.Query, context: _VerificationContext) -> bool:
     has_static_exp = False
-    for e in exps:
-        if _has_static_expression(context, e):
-            has_static_exp = True
+    where_clause = select_statement.find(expr.Where)
+    if where_clause:
+        and_exps = list(_split_to_expressions(where_clause.this, expr.And))
+        for e in and_exps:
+            if _has_static_expression(context, e):
+                has_static_exp = True
+    if has_static_exp:
+        simplify(where_clause)
     return not has_static_exp
 
 def _has_static_expression(context: _VerificationContext, exp: expr.Expression) -> bool:
     if isinstance(exp, expr.Not):
         return _has_static_expression(context, exp.this)
     result = False
+    to_replace = []
     for sub_exp in _split_to_expressions(exp, expr.Or):
         if isinstance(sub_exp, (expr.Or, expr.And)):
             result = _has_static_expression(context, sub_exp)
         elif not sub_exp.find(expr.Column):
             context.add_error(
-                f"Static expression is not allowed: {sub_exp.sql()}", False, 0.9)
+                f"Static expression is not allowed: {sub_exp.sql()}", True, 0.8)
+            par = sub_exp.parent
+            while isinstance(par, expr.Paren):
+                par = par.parent
+            if isinstance(par, expr.Or):
+                to_replace.append(sub_exp)
             result = True
+    for e in to_replace:
+        e.replace(expr.Boolean(this=False))
     return result
 
 
@@ -171,7 +189,6 @@ def _verify_restriction(restriction: dict, exp: expr.Expression) -> bool:
         return False
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, exp.this)
-
     if not isinstance(exp.this, expr.Column):
         return False
     if not exp.this.name == restriction["column"]:
