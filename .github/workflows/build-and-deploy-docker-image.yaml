@@ -43,6 +43,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             ${{ github.event.inputs.version || github.ref_name }}
+            latest
 
       - name: Set up QEMU (for multi-arch support)
         uses: docker/setup-qemu-action@v3
