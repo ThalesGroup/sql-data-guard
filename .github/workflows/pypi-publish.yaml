@@ -26,6 +26,7 @@ jobs:
       env:
         VERSION: ${{ github.event.inputs.version || github.ref_name }}
       run: |
+        VERSION=${VERSION#v}
         echo $VERSION
         sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
 
