@@ -8,7 +8,7 @@ package-dir = {"" = "src"}
 
 [project]
 name = "sql-data-guard"
-version = "0.0.1"
+version = "UPDATED-BY-WORKFLOW"
 authors = [
   { name="Imperva - Threat Reseach Infra", email="ww.dis.imperva.threat-research-infra@thalesgroup.com" },
 ]
