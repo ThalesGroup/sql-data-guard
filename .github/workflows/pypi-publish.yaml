@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag for the Docker image'
+        description: 'Version tag for the release'
         required: true
 
   push:
