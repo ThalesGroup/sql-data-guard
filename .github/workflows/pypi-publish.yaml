@@ -25,7 +25,7 @@ jobs:
     - name: Update version in toml
       env:
         VERSION: ${{ github.event.inputs.version || github.ref_name }}
-      run: sed -i '' "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+      run: sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
 
     - name: Install pypa/build
       run: python3 -m pip install build --user
