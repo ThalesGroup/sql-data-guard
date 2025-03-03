@@ -351,3 +351,6 @@ class TestNew:
         res = verify_sql("INSERT into products1 values(554, 'prod4', 'shipped', 'granted', '28-02-2025', 'c2')", config)
         assert res
 
+    def test_insert_row1(self, config):
+        res = verify_sql("INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')", config)
+        assert res
