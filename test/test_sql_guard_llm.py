@@ -1,17 +1,16 @@
 import json
-import logging
 import sqlite3
 from typing import Optional
 
 import pytest
 
 from sql_data_guard import verify_sql
-from test_utils import init_creds_from_file, invoke_llm, get_model_ids
+from test_utils import init_env_from_file, invoke_llm, get_model_ids
 
 
 @pytest.fixture(autouse=True, scope="module")
 def set_evn():
-    init_creds_from_file()
+    init_env_from_file()
     yield
 
 

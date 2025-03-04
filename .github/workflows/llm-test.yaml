@@ -1,7 +1,7 @@
 name: Run LLM integration Tests
 on: [workflow_dispatch]
 jobs:
-  test:
+  llm-test:
     runs-on: ubuntu-latest
 
     permissions:
@@ -20,7 +20,6 @@ jobs:
         run: |
           source .venv/bin/activate
           pip install pytest
-          pip install boto3
 
       - name: Get AWS Permissions
         uses: aws-actions/configure-aws-credentials@v2
