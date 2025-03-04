@@ -1,5 +1,16 @@
 name: Upload release to PyPI
-on: [workflow_dispatch]
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag for the release'
+        required: true
+
+  push:
+    tags:
+      - 'v*.*.*'
+
 jobs:
   pypi-publish:
 
@@ -11,9 +22,16 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Update version in toml
+      env:
+        VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      run: |
+        VERSION=${VERSION#v}
+        echo $VERSION
+        sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+
     - name: Install pypa/build
-      run: >-
-        python3 -m pip install build --user
+      run: python3 -m pip install build --user
 
     - name: Build a binary wheel and a source tarball
       run: python3 -m build
@@ -34,3 +52,4 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
+        verbose: true

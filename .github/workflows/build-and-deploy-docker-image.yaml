@@ -1,6 +1,15 @@
 name: Build and Deploy Docker Image
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag for the Docker image'
+        required: true
+
+  push:
+    tags:
+      - 'v*.*.*'
 
 env:
   REGISTRY: ghcr.io
@@ -29,9 +38,12 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            ${{ github.event.inputs.version || github.ref_name }}
+            latest
 
       - name: Set up QEMU (for multi-arch support)
         uses: docker/setup-qemu-action@v3
