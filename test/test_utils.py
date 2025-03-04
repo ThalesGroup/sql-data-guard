@@ -45,6 +45,8 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
     access_key = os.environ['AWS_ACCESS_KEY_ID']
     secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
 
+    logging.info(f"Region: {region}. Keys: {access_key[:4]}, {secret_key[:4]}")
+
     host = f"bedrock-runtime.{region}.amazonaws.com"
 
     t = datetime.datetime.now(datetime.UTC)
