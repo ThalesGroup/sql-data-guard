@@ -1,7 +1,7 @@
 name: Run LLM integration Tests
 on: [workflow_dispatch]
 jobs:
-  test:
+  llm-test:
     runs-on: ubuntu-latest
 
     permissions:
@@ -27,6 +27,8 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/sql-data-guard-github-role-for-bedrock-invoke
           aws-region: us-east-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Run unit tests
         run: |
