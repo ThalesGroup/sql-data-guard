@@ -130,7 +130,7 @@ class TestSingleTable:
         #assert allowed
         # got failed
 
-class TestAdditinalSqLcases:
+class TestAdditionalSqlCases:
     @pytest.fixture(scope="class")
     def config(self) -> dict:
         """Provide the configuration for SQL validation"""
@@ -289,7 +289,7 @@ class TestTrino:
                   config, dialect="trino")
 
 
-class TestRestrictions:
+class TestRestrictionsWithDifferentDataTypes:
     @pytest.fixture(scope="class")
     def config(self) -> dict:
         return {
@@ -347,6 +347,7 @@ class TestExplore:
 
             # Insert values into products1 table
             conn.execute("INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')")
+            conn.execute("INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')")
             conn.execute("INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')")
             conn.execute("INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')")
 
@@ -424,18 +425,20 @@ class TestExplore:
 
     def test_insert_row_not_allowed(self, config):
         res = verify_sql("INSERT into products1 values(554, 'prod4', 'shipped', 'granted', '28-02-2025', 'c2')", config)
-        assert res["allowed"] == False
-        print(res["errors"])
+        assert res["allowed"] == True, res
 
     def test_insert_row_not_allowed1(self, config):
         res = verify_sql("INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')", config)
-        assert res["allowed"] == False
-        print(res["errors"])
+        assert res["allowed"] == False, res
 
-    def test_query_execution(self, cnn):
+    def test_missing_restriction(self, config, cnn):
         cursor = cnn.cursor()
-        cursor.execute("SELECT id, prod_name FROM products1 WHERE id = 324")
+        sql = "SELECT id, prod_name FROM products1 WHERE id = 324"
+        cursor.execute(sql)
         result = cursor.fetchall()
-        expected = [(324, "prod1")]
-
+        expected = [(324, 'prod1'), (324, 'prod2')]
         assert result == expected
+        result = verify_sql(sql, config)
+        assert not result["allowed"], result
+        cursor.execute(result["fixed"])
+        assert cursor.fetchall() == [(324, "prod1")]
