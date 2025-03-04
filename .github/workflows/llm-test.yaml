@@ -20,15 +20,12 @@ jobs:
         run: |
           source .venv/bin/activate
           pip install pytest
-          pip install boto3
 
       - name: Get AWS Permissions
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/sql-data-guard-github-role-for-bedrock-invoke
           aws-region: us-east-1
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Run unit tests
         run: |
