@@ -44,6 +44,11 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
     region = os.environ['AWS_DEFAULT_REGION']
     access_key = os.environ['AWS_ACCESS_KEY_ID']
     secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
+    if "AWS_SESSION_TOKEN" in os.environ:
+        session_token = os.environ['AWS_SESSION_TOKEN']
+        logging.info(f"Session token: {session_token[:4]}")
+    else:
+        session_token = None
 
     logging.info(f"Region: {region}. Keys: {access_key[:4]}, {secret_key[:4]}")
 
@@ -88,6 +93,8 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
         "Authorization": f"{algorithm} Credential={access_key}/{credential_scope}, "
             f"SignedHeaders={signed_headers}, Signature={signature}"
     }
+    if session_token:
+        headers["X-Amz-Security-Token"] = session_token
 
     conn = http.client.HTTPSConnection(host)
     try:
