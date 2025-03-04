@@ -90,7 +90,12 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
     conn = http.client.HTTPSConnection(host)
     try:
         conn.request("POST", canonical_uri, body=json_payload, headers=headers)
-        return json.loads(conn.getresponse().read())
+        response = conn.getresponse()
+        logging.info(f"Response status: {response.status}")
+        logging.info(f"Response reason: {response.reason}")
+        data = response.read().decode()
+        logging.info(f"Response text: {data}")
+        return json.loads(data)
     finally:
         conn.close()
 
