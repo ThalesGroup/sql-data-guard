@@ -107,7 +107,6 @@ class TestSingleTable:
         result = verify_sql("SELECT * FROM orders", config)
         assert result["risk"] > 0
 
-<<<<<<< HEAD
     def test_risk_table(self, config):
         result = verify_sql("SELECT * FROM some_table", config)
         assert result["risk"] == 1
@@ -130,10 +129,6 @@ class TestSingleTable:
         assert not allowed
         #assert allowed
         # got failed
-=======
-    # Additional Test Cases
-
->>>>>>> 8c4e5044ff9be18bdbc3493c9b37424f3072bf5a
 
 class TestAdditinalSqLcases:
     @pytest.fixture(scope="class")
