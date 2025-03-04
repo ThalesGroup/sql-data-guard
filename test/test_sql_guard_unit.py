@@ -431,3 +431,11 @@ class TestExplore:
         res = verify_sql("INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')", config)
         assert res["allowed"] == False
         print(res["errors"])
+
+    def test_query_execution(self, cnn):
+        cursor = cnn.cursor()
+        cursor.execute("SELECT id, prod_name FROM products1 WHERE id = 324")
+        result = cursor.fetchall()
+        expected = [(324, "prod1")]
+
+        assert result == expected
