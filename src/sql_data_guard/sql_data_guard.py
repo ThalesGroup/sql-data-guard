@@ -94,7 +94,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
     if parsed:
         if isinstance(parsed, expr.Command):
             result.add_error(f"{parsed.name} statement is not allowed", False, 0.9)
-        elif isinstance(parsed, expr.Delete):
+        elif isinstance(parsed, expr.Delete) or isinstance(parsed, expr.Insert):
             result.add_error(f"{parsed.key.upper()} statement is not allowed", False, 0.9)
         elif isinstance(parsed, expr.Query):
             _verify_query_statement(parsed, result)

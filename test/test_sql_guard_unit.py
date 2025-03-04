@@ -425,11 +425,13 @@ class TestExplore:
 
     def test_insert_row_not_allowed(self, config):
         res = verify_sql("INSERT into products1 values(554, 'prod4', 'shipped', 'granted', '28-02-2025', 'c2')", config)
-        assert res["allowed"] == True, res
+        assert res["allowed"] == False, res
+        assert "INSERT statement is not allowed" in res["errors"], res
 
     def test_insert_row_not_allowed1(self, config):
         res = verify_sql("INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')", config)
         assert res["allowed"] == False, res
+        assert "INSERT statement is not allowed" in res["errors"], res
 
     def test_missing_restriction(self, config, cnn):
         cursor = cnn.cursor()
