@@ -257,7 +257,7 @@ WHERE bool_col = True AND str_col1 = 'def' AND str_col2 = 'abc'""", config,
                   )
 
 
-class TestNew:
+class TestExplore:
 
     @pytest.fixture(scope="class")
     def cnn(self):
@@ -327,30 +327,37 @@ class TestNew:
             ]
         }
 
-    def test_new_cases(self, config):
+    def test_access_denied(self, config):
         result = verify_sql("SELECT id, prod_name FROM products1", config)
-        assert result["allowed"] == 0
+        assert result["allowed"] == False
+        print(result["errors"])
 
-    def test_new_cases1(self, config):
+    def test_restricted_access(self, config):
         result = verify_sql("SELECT * FROM products1", config)
         assert result["allowed"] == False
+        print(result["errors"])
 
-    def test_new_invalid(self, config):
+    def test_invalid_query1(self, config):
         res = verify_sql("SELECT I", config)
-        assert {"allowed": False, "errors": ["Invalid SQL syntax"]}
+        assert res["allowed"] == False
+        print(res["errors"])
 
-    def test_new_cases2(self, config):
+    def test_invalid_select(self, config):
         res = verify_sql("SELECT id, prod_name, deliver from products1 where id = 324", config)
-        assert res
+        assert res['allowed'] == False
+        print(res["errors"])
 
     def test_missing_col(self, config):
         res = verify_sql("SELECT prod_details from products1 where id = 324", config)
-        assert {"allowed": False, "errors": ["Column non_existing_column is not allowed. Column not existing"]}
+        assert res["allowed"] == False # "errors": ["Column non_existing_column is not allowed. Column not existing"]}
+        print(res["errors"])
 
-    def test_insert_row(self, config):
+    def test_insert_row_not_allowed(self, config):
         res = verify_sql("INSERT into products1 values(554, 'prod4', 'shipped', 'granted', '28-02-2025', 'c2')", config)
-        assert res
+        assert res["allowed"] == False
+        print(res["errors"])
 
-    def test_insert_row1(self, config):
+    def test_insert_row_not_allowed1(self, config):
         res = verify_sql("INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')", config)
-        assert res
+        assert res["allowed"] == False
+        print(res["errors"])
