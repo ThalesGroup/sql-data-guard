@@ -25,6 +25,7 @@ jobs:
         run: |
           source .venv/bin/activate
           PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit.py
+          PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit_temp.py
 
       - name: Run REST API unit tests
         run: |
