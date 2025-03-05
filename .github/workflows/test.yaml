@@ -24,10 +24,4 @@ jobs:
       - name: Run unit tests
         run: |
           source .venv/bin/activate
-          PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit.py
-          PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit_temp.py
-
-      - name: Run REST API unit tests
-        run: |
-          source .venv/bin/activate
-          PYTHONPATH=src python -m pytest --color=yes test/test_rest_api_unit.py
+          PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
