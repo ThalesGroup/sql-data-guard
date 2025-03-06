@@ -5,12 +5,18 @@ from typing import Set
 import pytest
 
 from sql_data_guard import verify_sql
-from unit_test_utils import verify_sql_test
-from unit_test_utils import verify_sql_test_data
+from conftest import verify_sql_test
 
 
-def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, dialect: str = "sqlite",
-              cnn: Connection = None, data: list = None):
+def _test_sql(
+    sql: str,
+    config: dict,
+    errors: Set[str] = None,
+    fix: str = None,
+    dialect: str = "sqlite",
+    cnn: Connection = None,
+    data: list = None,
+):
     result = verify_sql(sql, config, dialect)
     if errors is None:
         assert result["errors"] == set()
@@ -31,6 +37,7 @@ def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, 
         if data is not None:
             assert fetched_data == [tuple(row) for row in data]
 
+
 class TestInvalidQueries:
 
     @pytest.fixture(scope="class")
@@ -39,7 +46,8 @@ class TestInvalidQueries:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
             # Creating products table
-            conn.execute("""
+            conn.execute(
+                """
             CREATE TABLE orders_db.products1 (
                 id INT,
                 prod_name TEXT,
@@ -47,21 +55,32 @@ class TestInvalidQueries:
                 access TEXT,
                 date TEXT,
                 cust_id TEXT
-            )""")
+            )"""
+            )
 
             # Insert values into products1 table
-            conn.execute("INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')")
-            conn.execute("INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')")
-            conn.execute("INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')")
-            conn.execute("INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')")
+            conn.execute(
+                "INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
+            )
 
             # Creating customers table
-            conn.execute("""
+            conn.execute(
+                """
             CREATE TABLE orders_db.customers (
                 id INT,
                 cust_id TEXT,
                 cust_name TEXT,
-                prod_name TEXT)""")
+                prod_name TEXT)"""
+            )
 
             # Insert values into customers table
             conn.execute("INSERT INTO customers VALUES (324, 'c1', 'cust1', 'prod1')")
@@ -70,7 +89,6 @@ class TestInvalidQueries:
 
             yield conn
 
-
     @pytest.fixture(scope="class")
     def config(self) -> dict:
         return {
@@ -78,12 +96,19 @@ class TestInvalidQueries:
                 {
                     "table_name": "products1",
                     "database_name": "orders_db",
-                    "columns": ["id", "prod_name", "deliver", "access", "date", "cust_id"],
+                    "columns": [
+                        "id",
+                        "prod_name",
+                        "deliver",
+                        "access",
+                        "date",
+                        "cust_id",
+                    ],
                     "restrictions": [
                         {"column": "access", "value": "granted"},
                         {"column": "date", "value": "27-02-2025"},
-                        {"column": "cust_id", "value": "c1"}
-                    ]
+                        {"column": "cust_id", "value": "c1"},
+                    ],
                 },
                 {
                     "table_name": "customers",
@@ -94,55 +119,88 @@ class TestInvalidQueries:
                         {"column": "cust_id", "value": "c1"},
                         {"column": "cust_name", "value": "cust1"},
                         {"column": "prod_name", "value": "prod1"},
-                        {"column": "access", "value": "granted"}
-                    ]
-                }
+                        {"column": "access", "value": "granted"},
+                    ],
+                },
             ]
         }
 
     def test_access_denied(self, config):
-        result = verify_sql('''SELECT id, prod_name FROM products1 
+        result = verify_sql(
+            """SELECT id, prod_name FROM products1 
         WHERE id = 324 AND access = 'granted' AND date = '27-02-2025'
-        AND cust_id = 'c1' ''', config)
-        assert result["allowed"] == True, result                         # changed from select id, prod_name to this query
+        AND cust_id = 'c1' """,
+            config,
+        )
+        assert (
+            result["allowed"] == True
+        ), result  # changed from select id, prod_name to this query
 
     def test_restricted_access(self, config):
-        result = verify_sql('''SELECT id, prod_name, deliver, access, date, cust_id 
+        result = verify_sql(
+            """SELECT id, prod_name, deliver, access, date, cust_id 
         FROM products1 WHERE access = 'granted'
-        AND date = '27-02-2025' AND cust_id = 'c1' ''', config)            # Changed from select * to this query
+        AND date = '27-02-2025' AND cust_id = 'c1' """,
+            config,
+        )  # Changed from select * to this query
         assert result["allowed"] == True, result
 
     def test_invalid_query1(self, config):
         res = verify_sql("SELECT I from H", config)
-        assert not res["allowed"]                                      # gives error only when invalid table is mentioned
-        assert 'Table H is not allowed' in res['errors']
+        assert not res["allowed"]  # gives error only when invalid table is mentioned
+        assert "Table H is not allowed" in res["errors"]
 
     def test_invalid_select(self, config):
-        res = verify_sql('''SELECT id, prod_name, deliver FROM 
+        res = verify_sql(
+            """SELECT id, prod_name, deliver FROM 
         products1 WHERE id = 324 AND access = 'granted' 
-        AND date = '27-02-2025' AND cust_id = 'c1' ''', config)
-        assert res['allowed'] == True, res                       #changed from select id, prod_name, deliver from products1 where id = 324 to this
+        AND date = '27-02-2025' AND cust_id = 'c1' """,
+            config,
+        )
+        assert (
+            res["allowed"] == True
+        ), res  # changed from select id, prod_name, deliver from products1 where id = 324 to this
 
-# checking error
+    # checking error
     def test_invalid_select_error_check(self, config):
-        res = verify_sql('''select id, prod_name, deliver from products1 where id = 324 ''', config)
-        assert not res['allowed']
-        assert 'Missing restriction for table: products1 column: access value: granted' in res['errors']
-        assert 'Missing restriction for table: products1 column: cust_id value: c1' in res['errors']
-        assert 'Missing restriction for table: products1 column: date value: 27-02-2025' in res['errors']
+        res = verify_sql(
+            """select id, prod_name, deliver from products1 where id = 324 """, config
+        )
+        assert not res["allowed"]
+        assert (
+            "Missing restriction for table: products1 column: access value: granted"
+            in res["errors"]
+        )
+        assert (
+            "Missing restriction for table: products1 column: cust_id value: c1"
+            in res["errors"]
+        )
+        assert (
+            "Missing restriction for table: products1 column: date value: 27-02-2025"
+            in res["errors"]
+        )
 
     def test_missing_col(self, config):
         res = verify_sql("SELECT prod_details from products1 where id = 324", config)
         assert not res["allowed"]
-        assert "Column prod_details is not allowed. Column removed from SELECT clause" in res['errors']
+        assert (
+            "Column prod_details is not allowed. Column removed from SELECT clause"
+            in res["errors"]
+        )
 
     def test_insert_row_not_allowed(self, config):
-        res = verify_sql("INSERT into products1 values(554, 'prod4', 'shipped', 'granted', '28-02-2025', 'c2')", config)
+        res = verify_sql(
+            "INSERT into products1 values(554, 'prod4', 'shipped', 'granted', '28-02-2025', 'c2')",
+            config,
+        )
         assert res["allowed"] == False, res
         assert "INSERT statement is not allowed" in res["errors"], res
 
     def test_insert_row_not_allowed1(self, config):
-        res = verify_sql("INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')", config)
+        res = verify_sql(
+            "INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')",
+            config,
+        )
         assert res["allowed"] == False, res
         assert "INSERT statement is not allowed" in res["errors"], res
 
@@ -151,29 +209,32 @@ class TestInvalidQueries:
         sql = "SELECT id, prod_name FROM products1 WHERE id = 324"
         cursor.execute(sql)
         result = cursor.fetchall()
-        expected = [(324, 'prod1'), (324, 'prod2')]
+        expected = [(324, "prod1"), (324, "prod2")]
         assert result == expected
         result = verify_sql(sql, config)
         assert not result["allowed"], result
         cursor.execute(result["fixed"])
         assert cursor.fetchall() == [(324, "prod1")]
 
-    def test_using_cnn(self, config,cnn):
+    def test_using_cnn(self, config, cnn):
         cursor = cnn.cursor()
-        sql = "SELECT id, prod_name FROM products1 WHERE id = 324 and access = 'granted' "
+        sql = (
+            "SELECT id, prod_name FROM products1 WHERE id = 324 and access = 'granted' "
+        )
         cursor.execute(sql)
         res = cursor.fetchall()
-        expected = [(324, 'prod1')]
+        expected = [(324, "prod1")]
         assert res == expected
         res = verify_sql(sql, config)
-        assert not res['allowed'], res
-        cursor.execute(res['fixed'])
+        assert not res["allowed"], res
+        cursor.execute(res["fixed"])
         assert cursor.fetchall() == [(324, "prod1")]
 
-    def test_update_value(self,config):
-        res = verify_sql("Update products1 set id = 224 where id = 324",config)
-        assert res['allowed'] == False, res
-        assert "UPDATE statement is not allowed" in res['errors']
+    def test_update_value(self, config):
+        res = verify_sql("Update products1 set id = 224 where id = 324", config)
+        assert res["allowed"] == False, res
+        assert "UPDATE statement is not allowed" in res["errors"]
+
 
 class TestJoins:
 
@@ -183,7 +244,8 @@ class TestJoins:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
             # Creating products table
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE orders_db.products1 (
                     id INT,
                     prod_name TEXT,
@@ -191,21 +253,32 @@ class TestJoins:
                     access TEXT,
                     date TEXT,
                     cust_id TEXT
-                )""")
+                )"""
+            )
 
             # Insert values into products1 table
-            conn.execute("INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')")
-            conn.execute("INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')")
-            conn.execute("INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')")
-            conn.execute("INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')")
+            conn.execute(
+                "INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
+            )
 
             # Creating customers table
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE orders_db.customers (
                     id INT,
                     cust_id TEXT,
                     cust_name TEXT,
-                    prod_name TEXT)""")
+                    prod_name TEXT)"""
+            )
 
             # Insert values into customers table
             conn.execute("INSERT INTO customers VALUES (324, 'c1', 'cust1', 'prod1')")
@@ -217,87 +290,132 @@ class TestJoins:
     @pytest.fixture(scope="class")
     def config(self) -> dict:
         return {
-        "tables": [
-            {
-                "table_name": "products1",
-                "database_name": "orders_db",
-                "columns": ["id", "prod_name", "category"],
-                "restrictions": [{"column": "id", "value": 324}]
-            },
-            {
-                "table_name": "customers",
-                "database_name": "orders_db",
-                "columns": ["cust_id", "cust_name", "access"],
-                "restrictions": [{"column": "access", "value": "restricted"}]
-            }
-        ]
-    }
+            "tables": [
+                {
+                    "table_name": "products1",
+                    "database_name": "orders_db",
+                    "columns": ["id", "prod_name", "category"],
+                    "restrictions": [{"column": "id", "value": 324}],
+                },
+                {
+                    "table_name": "customers",
+                    "database_name": "orders_db",
+                    "columns": ["cust_id", "cust_name", "access"],
+                    "restrictions": [{"column": "access", "value": "restricted"}],
+                },
+            ]
+        }
 
     def test_restriction_passed(self, config):
-        res = verify_sql('SELECT id, prod_name from products1 where id = 324 and access = "granted" ',config)
+        res = verify_sql(
+            'SELECT id, prod_name from products1 where id = 324 and access = "granted" ',
+            config,
+        )
         assert res["allowed"] == True, res
 
     def test_restriction_restricted(self, config):
-        res = verify_sql('SELECT id, prod_name from products1 where id = 435',config)
+        res = verify_sql("SELECT id, prod_name from products1 where id = 435", config)
         assert res["allowed"] == False, res
 
     def test_inner_join_on_id(self, config):
-        res = verify_sql('''SELECT id, prod_name FROM products1
+        res = verify_sql(
+            """SELECT id, prod_name FROM products1
          INNER JOIN customers ON products1.id = customers.id 
-         WHERE (id = 324) AND access = 'restricted' ''', config)
+         WHERE (id = 324) AND access = 'restricted' """,
+            config,
+        )
         assert res["allowed"] == True, res
 
     def test_full_outer_join(self, config):
-        res = verify_sql('''SELECT id, prod_name from products1
+        res = verify_sql(
+            """SELECT id, prod_name from products1
         FULL OUTER JOIN customers on products1.id = customers.id
-        where (id = 324) AND access = 'restricted' ''', config)
+        where (id = 324) AND access = 'restricted' """,
+            config,
+        )
         assert res["allowed"] == True, res
 
-    def test_right_join(self,config):
-        res = verify_sql('''SELECT id, prod_name FROM products1
+    def test_right_join(self, config):
+        res = verify_sql(
+            """SELECT id, prod_name FROM products1
          RIGHT JOIN customers ON products1.id = customers.id 
-         WHERE ((id = 324)) AND access = 'restricted' ''', config)
+         WHERE ((id = 324)) AND access = 'restricted' """,
+            config,
+        )
         assert res["allowed"] == True, res
 
-    def test_left_join(self,config):
-        res = verify_sql('''SELECT id, prod_name FROM products1
+    def test_left_join(self, config):
+        res = verify_sql(
+            """SELECT id, prod_name FROM products1
                  LEFT JOIN customers ON products1.id = customers.id 
-                 WHERE ((id = 324)) AND access = 'restricted' ''', config)
+                 WHERE ((id = 324)) AND access = 'restricted' """,
+            config,
+        )
         assert res["allowed"] == True, res
 
-    def test_union(self,config):
-        res = verify_sql('''select id from products1
-        union select id from customers''', config)
+    def test_union(self, config):
+        res = verify_sql(
+            """select id from products1
+        union select id from customers""",
+            config,
+        )
         assert not res["allowed"]
-        assert 'Column id is not allowed. Column removed from SELECT clause' in res['errors']
+        assert (
+            "Column id is not allowed. Column removed from SELECT clause"
+            in res["errors"]
+        )
 
-    def test_inner_join_fail(self,config):
-        res = verify_sql('''SELECT id, prod_name FROM products1
+    def test_inner_join_fail(self, config):
+        res = verify_sql(
+            """SELECT id, prod_name FROM products1
          INNER JOIN customers ON products1.id = customers.id 
-         WHERE (id = 324) AND access = 'granted' ''', config)
+         WHERE (id = 324) AND access = 'granted' """,
+            config,
+        )
         assert not res["allowed"]
-        assert "Missing restriction for table: customers column: access value: restricted" in res["errors"]
+        assert (
+            "Missing restriction for table: customers column: access value: restricted"
+            in res["errors"]
+        )
 
     def test_full_outer_join_fail(self, config):
-        res = verify_sql('''SELECT id, prod_name from products1
+        res = verify_sql(
+            """SELECT id, prod_name from products1
         FULL OUTER JOIN customers on products1.id = customers.id
-        where (id = 324) AND access = 'pending' ''', config)
+        where (id = 324) AND access = 'pending' """,
+            config,
+        )
         assert not res["allowed"]
-        assert "Missing restriction for table: customers column: access value: restricted" in res["errors"]
+        assert (
+            "Missing restriction for table: customers column: access value: restricted"
+            in res["errors"]
+        )
 
-    def test_right_join_fail(self,config):
-        res = verify_sql('''SELECT id, prod_name FROM products1
+    def test_right_join_fail(self, config):
+        res = verify_sql(
+            """SELECT id, prod_name FROM products1
          RIGHT JOIN customers ON products1.id = customers.id 
-         WHERE ((id = 324)) AND access = 'granted' ''', config)
+         WHERE ((id = 324)) AND access = 'granted' """,
+            config,
+        )
         assert not res["allowed"]
-        assert "Missing restriction for table: customers column: access value: restricted" in res["errors"]
+        assert (
+            "Missing restriction for table: customers column: access value: restricted"
+            in res["errors"]
+        )
 
-    def test_left_join_fail(self,config):
-        res = verify_sql('''SELECT id, prod_name FROM products1
+    def test_left_join_fail(self, config):
+        res = verify_sql(
+            """SELECT id, prod_name FROM products1
                  LEFT JOIN customers ON products1.id = customers.id 
-                 WHERE ((id = 324)) AND access = 'granted' ''', config)
+                 WHERE ((id = 324)) AND access = 'granted' """,
+            config,
+        )
         assert not res["allowed"]
-        assert "Missing restriction for table: customers column: access value: restricted" in res["errors"]
+        assert (
+            "Missing restriction for table: customers column: access value: restricted"
+            in res["errors"]
+        )
 
     def test_inner_join_using_test_sql(self, config):
         verify_sql_test(
@@ -305,25 +423,27 @@ class TestJoins:
             config,
         )
 
-    def test_inner_join_on_test_sql(self,config):
-        verify_sql_test('''SELECT id, prod_name FROM products1 INNER JOIN 
-        customers on products1.id = customers.id WHERE id = 324 AND access = 'restricted' ''', config)
+    def test_inner_join_on_test_sql(self, config):
+        verify_sql_test(
+            """SELECT id, prod_name FROM products1 INNER JOIN 
+        customers on products1.id = customers.id WHERE id = 324 AND access = 'restricted' """,
+            config,
+        )
 
-    def test_distinct_id_group_by(self,config, cnn):
-        sql = '''SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 and access = 'granted'  GROUP BY id'''
+    def test_distinct_id_group_by(self, config, cnn):
+        sql = """SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 and access = 'granted'  GROUP BY id"""
         res = verify_sql(sql, config)
-        assert res['allowed'] == True, res
+        assert res["allowed"] == True, res
         print(cnn.execute(sql).fetchall())
-        assert cnn.execute(sql).fetchall() == [(1, 'prod1')]
+        assert cnn.execute(sql).fetchall() == [(1, "prod1")]
 
-    def test_distinct_and_group_by_missing_restriction(self,config,cnn):
-        sql = '''SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 GROUP BY id'''
-        verify_sql_test(sql,
-                        config,
-                        errors = {
-                            'Missing restriction for table: products1 column: id value: 324'
-                        },
-                        fix = 'SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 GROUP BY id',
+    def test_distinct_and_group_by_missing_restriction(self, config, cnn):
+        sql = """SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 GROUP BY id"""
+        verify_sql_test(
+            sql,
+            config,
+            errors={"Missing restriction for table: products1 column: id value: 324"},
+            fix="SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 GROUP BY id",
             cnn=cnn,
-            data=[(1,'prod1')],
+            data=[(1, "prod1")],
         )

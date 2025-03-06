@@ -7,7 +7,7 @@ from typing import Generator
 import pytest
 
 from sql_data_guard import verify_sql
-from unit_test_utils import verify_sql_test, verify_sql_test_data
+from conftest import verify_sql_test, verify_sql_test_data
 
 
 def _get_resource(file_name: str) -> str:
@@ -17,7 +17,12 @@ def _get_resource(file_name: str) -> str:
 def _get_tests(file_name: str) -> Generator[dict, None, None]:
     with open(_get_resource(os.path.join("resources", file_name))) as f:
         for line in f:
-            yield json.loads(line)
+            try:
+                test_json = json.loads(line)
+                yield test_json
+            except Exception:
+                logging.error(f"Error parsing test: {line}")
+                raise
 
 
 class TestSQLErrors:

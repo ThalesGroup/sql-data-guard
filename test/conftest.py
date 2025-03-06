@@ -17,7 +17,9 @@ def verify_sql_test(
     if errors is None:
         assert result["errors"] == set()
     else:
-        assert set(result["errors"]) == set(errors)
+        expected_errors = list(errors)
+        actual_errors = list(result["errors"])
+        assert actual_errors == expected_errors
     if len(result["errors"]) > 0:
         assert result["risk"] > 0
     else:
