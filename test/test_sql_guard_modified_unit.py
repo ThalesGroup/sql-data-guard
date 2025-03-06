@@ -1,13 +1,13 @@
-import json
-import logging
-import os
 import sqlite3
 from sqlite3 import Connection
-from typing import Set, Generator
+from typing import Set
 
 import pytest
 
 from sql_data_guard import verify_sql
+from unit_test_utils import verify_sql_test
+from unit_test_utils import verify_sql_test_data
+
 
 def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, dialect: str = "sqlite",
               cnn: Connection = None, data: list = None):
@@ -298,3 +298,32 @@ class TestJoins:
                  WHERE ((id = 324)) AND access = 'granted' ''', config)
         assert not res["allowed"]
         assert "Missing restriction for table: customers column: access value: restricted" in res["errors"]
+
+    def test_inner_join_using_test_sql(self, config):
+        verify_sql_test(
+            "SELECT id, prod_name FROM products1 INNER JOIN customers USING (id) WHERE id = 324 AND access = 'restricted' ",
+            config,
+        )
+
+    def test_inner_join_on_test_sql(self,config):
+        verify_sql_test('''SELECT id, prod_name FROM products1 INNER JOIN 
+        customers on products1.id = customers.id WHERE id = 324 AND access = 'restricted' ''', config)
+
+    def test_distinct_id_group_by(self,config, cnn):
+        sql = '''SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 and access = 'granted'  GROUP BY id'''
+        res = verify_sql(sql, config)
+        assert res['allowed'] == True, res
+        print(cnn.execute(sql).fetchall())
+        assert cnn.execute(sql).fetchall() == [(1, 'prod1')]
+
+    def test_distinct_and_group_by_missing_restriction(self,config,cnn):
+        sql = '''SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 GROUP BY id'''
+        verify_sql_test(sql,
+                        config,
+                        errors = {
+                            'Missing restriction for table: products1 column: id value: 324'
+                        },
+                        fix = 'SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 GROUP BY id',
+            cnn=cnn,
+            data=[(1,'prod1')],
+        )
