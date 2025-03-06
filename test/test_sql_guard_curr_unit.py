@@ -6,28 +6,8 @@ from typing import Set, Generator
 
 import pytest
 from sql_data_guard import verify_sql
+from test_sql_guard_unit import _test_sql
 
-def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, dialect: str = "sqlite",
-              cnn: Connection = None, data: list = None):
-    result = verify_sql(sql, config, dialect)
-    if errors is None:
-        assert result["errors"] == set()
-    else:
-        assert set(result["errors"]) == set(errors)
-    if len(result["errors"]) > 0:
-        assert result["risk"] > 0
-    else:
-        assert result["risk"] == 0
-    if fix is None:
-        assert result.get("fixed") is None
-        sql_to_use = sql
-    else:
-        assert result["fixed"] == fix
-        sql_to_use = result["fixed"]
-    if cnn and data:
-        fetched_data = cnn.execute(sql_to_use).fetchall()
-        if data is not None:
-            assert fetched_data == [tuple(row) for row in data]
 
 
 class TestSQLJoins:
@@ -77,12 +57,15 @@ class TestSQLJoins:
             conn.execute("INSERT INTO orders_db.orders VALUES (2, 2)")
             yield conn
 
+
+
+
     def test_inner_join_with_price_restriction(self, config):
         sql_query = """
             SELECT prod_name
             FROM products
             INNER JOIN orders ON products.prod_id = orders.prod_id
-            WHERE price >= 100 AND price = 100
+            WHERE price > 100 AND price = 100
         """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is True, res
@@ -197,8 +180,7 @@ class TestSQLJoins:
         assert res["allowed"] is True, res
         assert res["errors"] == set(), res
 
-import sqlite3
-import pytest
+
 
 class TestAdditionalSqlCases:
 
