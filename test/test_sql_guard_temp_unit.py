@@ -9,6 +9,28 @@ import pytest
 
 from sql_data_guard import verify_sql
 
+def _test_sql(sql: str, config: dict, errors: Set[str] = None, fix: str = None, dialect: str = "sqlite",
+              cnn: Connection = None, data: list = None):
+    result = verify_sql(sql, config, dialect)
+    if errors is None:
+        assert result["errors"] == set()
+    else:
+        assert set(result["errors"]) == set(errors)
+    if len(result["errors"]) > 0:
+        assert result["risk"] > 0
+    else:
+        assert result["risk"] == 0
+    if fix is None:
+        assert result.get("fixed") is None
+        sql_to_use = sql
+    else:
+        assert result["fixed"] == fix
+        sql_to_use = result["fixed"]
+    if cnn and data:
+        fetched_data = cnn.execute(sql_to_use).fetchall()
+        if data is not None:
+            assert fetched_data == [tuple(row) for row in data]
+
 class TestInvalidQueries:
 
     @pytest.fixture(scope="class")
@@ -135,6 +157,23 @@ class TestInvalidQueries:
         assert not result["allowed"], result
         cursor.execute(result["fixed"])
         assert cursor.fetchall() == [(324, "prod1")]
+
+    def test_using_cnn(self, config,cnn):
+        cursor = cnn.cursor()
+        sql = "SELECT id, prod_name FROM products1 WHERE id = 324 and access = 'granted' "
+        cursor.execute(sql)
+        res = cursor.fetchall()
+        expected = [(324, 'prod1')]
+        assert res == expected
+        res = verify_sql(sql, config)
+        assert not res['allowed'], res
+        cursor.execute(res['fixed'])
+        assert cursor.fetchall() == [(324, "prod1")]
+
+    def test_update_value(self,config):
+        res = verify_sql("Update products1 set id = 224 where id = 324",config)
+        assert res['allowed'] == False, res
+        assert "UPDATE statement is not allowed" in res['errors']
 
 class TestJoins:
 
