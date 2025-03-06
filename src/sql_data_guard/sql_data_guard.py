@@ -132,39 +132,47 @@ def _verify_restrictions(
         and_exps = []
     else:
         and_exps = list(_split_to_expressions(where_clause.this, expr.And))
-    for t in [
-        c_t
-        for c_t in context.config["tables"]
-        if c_t["table_name"] in [t.name for t in from_tables]
-    ]:
-        for idx, r in enumerate(t.get("restrictions", [])):
-            found = False
-            for sub_exp in and_exps:
-                if _verify_restriction(r, sub_exp):
-                    found = True
-                    break
-            if not found:
-                context.add_error(
-                    f"Missing restriction for table: {t['table_name']} column: {r['column']} value: {r['value']}",
-                    True,
-                    0.5,
-                )
-                value = f"'{r['value']}'" if isinstance(r["value"], str) else r["value"]
-                new_condition = sqlglot.parse_one(
-                    f"{r['column']} = {value}", dialect=context.dialect
-                )
-                if where_clause is None:
-                    where_clause = expr.Where(this=new_condition)
-                    select_statement.set("where", where_clause)
-                else:
-                    where_clause = where_clause.replace(
-                        expr.Where(
-                            this=expr.And(
-                                this=expr.paren(where_clause.this),
-                                expression=new_condition,
+    for c_t in context.config["tables"]:
+        for from_t in [t for t in from_tables if t.name == c_t["table_name"]]:
+            for idx, r in enumerate(c_t.get("restrictions", [])):
+                found = False
+                for sub_exp in and_exps:
+                    if _verify_restriction(r, from_t, sub_exp):
+                        found = True
+                        break
+                if not found:
+                    if from_t.alias:
+                        t_prefix = f"{from_t.alias}."
+                    elif len([t for t in from_tables if t.name == from_t.name]) > 1:
+                        t_prefix = f"{from_t.name}."
+                    else:
+                        t_prefix = ""
+
+                    context.add_error(
+                        f"Missing restriction for table: {c_t['table_name']} column: {t_prefix}{r['column']} value: {r['value']}",
+                        True,
+                        0.5,
+                    )
+                    value = (
+                        f"'{r['value']}'" if isinstance(r["value"], str) else r["value"]
+                    )
+
+                    new_condition = sqlglot.parse_one(
+                        f"{t_prefix}{r['column']} = {value}",
+                        dialect=context.dialect,
+                    )
+                    if where_clause is None:
+                        where_clause = expr.Where(this=new_condition)
+                        select_statement.set("where", where_clause)
+                    else:
+                        where_clause = where_clause.replace(
+                            expr.Where(
+                                this=expr.And(
+                                    this=expr.paren(where_clause.this),
+                                    expression=new_condition,
+                                )
                             )
                         )
-                    )
 
 
 def _verify_static_expression(
@@ -205,12 +213,15 @@ def _has_static_expression(context: _VerificationContext, exp: expr.Expression) 
     return result
 
 
-def _verify_restriction(restriction: dict, exp: expr.Expression) -> bool:
+def _verify_restriction(
+    restriction: dict, from_table: expr.Table, exp: expr.Expression
+) -> bool:
     """
     Verifies if a given restriction is satisfied within an SQL expression.
 
     Args:
         restriction (dict): The restriction to verify, containing 'column' and 'value' keys.
+        from_table (Table): The table reference to check the restriction against.
         exp (list): The SQL expression to check against the restriction.
 
     Returns:
@@ -219,10 +230,14 @@ def _verify_restriction(restriction: dict, exp: expr.Expression) -> bool:
     if isinstance(exp, expr.Not):
         return False
     if isinstance(exp, expr.Paren):
-        return _verify_restriction(restriction, exp.this)
+        return _verify_restriction(restriction, from_table, exp.this)
     if not isinstance(exp.this, expr.Column):
         return False
     if not exp.this.name == restriction["column"]:
+        return False
+    if exp.this.table and from_table.alias and exp.this.table != from_table.alias:
+        return False
+    if exp.this.table and not from_table.alias and exp.this.table != from_table.name:
         return False
     if not isinstance(exp, expr.EQ):
         return False
