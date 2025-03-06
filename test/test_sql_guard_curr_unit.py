@@ -6,7 +6,7 @@ from typing import Set, Generator
 
 import pytest
 from sql_data_guard import verify_sql
-from test_sql_guard_unit import _test_sql
+from test_sql_guard_unit import verify_sql_test
 
 
 
