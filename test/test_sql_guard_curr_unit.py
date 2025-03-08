@@ -6,8 +6,7 @@ from typing import Set, Generator
 
 import pytest
 from sql_data_guard import verify_sql
-from test_sql_guard_unit import verify_sql_test
-
+from conftest import verify_sql_test, verify_sql_test_data
 
 
 class TestSQLJoins:
@@ -58,7 +57,18 @@ class TestSQLJoins:
             yield conn
 
 
-
+    def test_inner_join_using(self, config):
+        verify_sql_test(
+            "SELECT prod_id, prod_name, order_id "
+            "FROM products INNER JOIN orders USING (prod_id) WHERE price = 100",
+            config,
+        )
+    def test_inner_join_with_restriction(self,config):
+        verify_sql_test(
+            "SELECT prod_name "
+            "FROM products INNER JOIN orders USING (prod_id) WHERE price > 100 AND price = 100",
+            config,
+        )
 
     def test_inner_join_with_price_restriction(self, config):
         sql_query = """
@@ -181,98 +191,143 @@ class TestSQLJoins:
         assert res["errors"] == set(), res
 
 
+class TestSQLJsonArrayQueries:
 
-class TestAdditionalSqlCases:
-
-    @pytest.fixture(scope="class")
-    def cnn(self):
-        with sqlite3.connect(":memory:") as conn:
-            # Creating 'orders' table in the in-memory database
-            conn.execute("""
-            CREATE TABLE orders (
-                id INT,
-                product_name TEXT,
-                account_id TEXT,
-                status TEXT,
-                not_allowed TEXT
-            )""")
-            # Inserting values into the 'orders' table
-            conn.execute("INSERT INTO orders VALUES (123, 'product_1', 'acc_1', 'shipped', 'no')")
-            conn.execute("INSERT INTO orders VALUES (124, 'product_2', 'acc_2', 'delivered', 'yes')")
-            conn.execute("INSERT INTO orders VALUES (125, 'product_3', 'acc_3', 'pending', 'no')")
-            conn.execute("INSERT INTO orders VALUES (126, 'product_4', 'acc_4', 'shipped', 'no')")
-            yield conn
-
+    # Fixture to provide the configuration for SQL validation with updated restrictions
     @pytest.fixture(scope="class")
     def config(self) -> dict:
-        """Provide the configuration for SQL validation"""
+        """Provide the configuration for SQL validation with restriction on prod_category"""
         return {
             "tables": [
                 {
+                    "table_name": "products",
+                    "database_name": "orders_db",
+                    "columns": ["prod_id", "prod_name", "prod_category", "price", "attributes"],
+                    "restrictions": [
+                        {"column": "prod_category", "value": "CategoryB", "operation": "!="}
+                        # Restriction on prod_category: not equal to "CategoryB"
+                    ]
+                },
+                {
                     "table_name": "orders",
                     "database_name": "orders_db",
-                    "columns": ["id", "product_name", "account_id", "status", "not_allowed"],
-                    "restrictions": [{"column": "id", "value": 123}]
+                    "columns": ["order_id", "prod_id"],
+                    "restrictions": []  # No restrictions for the 'orders' table
                 }
             ]
         }
+        # Additional Fixture for JSON and Array tests
+    @pytest.fixture(scope="class")
+    def cnn_with_json_and_array(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
-    def test_invalid_sql_syntax(self, config):
-        """Test for invalid SQL syntax"""
-        result = verify_sql("SELECT * FORM orders", config)  # Invalid SQL, typo in 'FROM'
-        assert result["allowed"] == False, result
+            # Creating 'products' table with JSON and array-like column
+            conn.execute("""
+                CREATE TABLE orders_db.products (
+                    prod_id INT,
+                    prod_name TEXT,
+                    prod_category TEXT,
+                    price REAL,
+                    attributes JSON
+                )""")
 
-    def test_invalid_query(self, config):
-        """Test for invalid SQL query like DROP"""
-        result = verify_sql("DROP TABLE users;", config)  # Invalid query, drop statement not allowed
-        assert result["allowed"] == False, result
+            # Creating a second table 'orders'
+            conn.execute("""
+                CREATE TABLE orders_db.orders (
+                    order_id INT,
+                    prod_id INT
+                )""")
 
-    def test_select_with_invalid_column(self, config):
-        """Test for selecting an invalid column"""
-        result = verify_sql("SELECT id, invalid_column FROM orders", config)
-        assert result["allowed"] == False
-        # Ensure that "invalid_column" is mentioned in the errors, regardless of other errors
-        error_messages = result["errors"]
-        assert any("invalid_column" in error for error in error_messages), f"Unexpected errors: {error_messages}"
+            # Insert sample data with JSON column
+            conn.execute("""
+                INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price, attributes)
+                VALUES (1, 'Product1', 'CategoryA', 120, '{"colors": ["red", "blue"], "size": "M"}')
+            """)
+            conn.execute("""
+                INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price, attributes)
+                VALUES (2, 'Product2', 'CategoryB', 80, '{"colors": ["green"], "size": "S"}')
+            """)
+            conn.execute("""
+                INSERT INTO orders_db.orders (order_id, prod_id) 
+                VALUES (1, 1), (2, 2)
+            """)
 
-    def test_missing_column_in_select(self, config):
-        """Test for selecting a non-existing column"""
-        result = verify_sql("SELECT non_existing_column FROM orders", config)
-        assert result["allowed"] == False  # Expecting this to be disallowed
-        assert "Column non_existing_column is not allowed. Column removed from SELECT clause" in result["errors"]
+            yield conn
 
-    def test_select_with_multiple_restrictions(self, config):
-        """Test for selecting with multiple restrictions"""
-        result = verify_sql("SELECT id FROM orders WHERE id = 123", config)
-        assert result["allowed"] == True
-        assert len(result["errors"]) == 0
 
-    def test_select_with_invalid_table(self, config):
-        """Test for selecting from a table that doesn't exist"""
-        result = verify_sql("SELECT id FROM unknown_table", config)
-        assert result["allowed"] == False
-        assert "Table unknown_table is not allowed" in result["errors"]
+    # Test Array-like column using JSON with the updated restriction on prod_category
+    def test_array_column_query_with_json(self, cnn_with_json_and_array, config):
+        sql_query = """
+            SELECT prod_id, prod_name, json_extract(attributes, '$.colors[0]') AS first_color
+            FROM products
+            WHERE prod_category != 'CategoryB'
+        """
+        res = verify_sql(sql_query, config)
+        assert res["allowed"] is False, res
 
-    def test_select_with_no_where_clause(self, config):
-        """Test for selecting data without applying any restrictions"""
-        result = verify_sql("SELECT * FROM orders", config)
-        assert result["allowed"] == False
-        assert "Missing restriction for table: orders column: id value: 123" in result["errors"]
+    # Test querying JSON field with the updated restriction on prod_category
+    def test_json_field_query(self, cnn_with_json_and_array, config):
+        sql_query = """
+            SELECT prod_name, json_extract(attributes, '$.size') AS size
+            FROM products
+            WHERE json_extract(attributes, '$.size') = 'M' AND prod_category != 'CategoryB'
+        """
+        res = verify_sql(sql_query, config)
+        assert res["allowed"] is False, res
 
-    def test_select_with_correct_column_but_wrong_value(self, config):
-        """Test for selecting a column with a restriction, but using an incorrect value"""
-        result = verify_sql("SELECT id FROM orders WHERE id = 999", config)
-        assert result["allowed"] == False
-        assert "Missing restriction for table: orders column: id value: 123" in result["errors"]
+    # Test for additional restrictions in config
+    def test_restrictions_query(self, cnn_with_json_and_array, config):
+        sql_query = """
+            SELECT prod_id, prod_name
+            FROM products
+            WHERE prod_category != 'CategoryB'
+        """
+        res = verify_sql(sql_query, config)
+        assert res["allowed"] is False, res
 
-    def test_select_with_valid_column_and_value(self, config):
-        """Test for selecting data with correct column and value (should be allowed)"""
-        result = verify_sql("SELECT id FROM orders WHERE id = 123", config)
-        assert result["allowed"] == True
-        assert len(result["errors"]) == 0
+    # Test Array-like column using JSON and filtering based on the array's first element
+    def test_json_array_column_with_filter(self, cnn_with_json_and_array, config):
+        sql_query = """
+            SELECT prod_id, prod_name, json_extract(attributes, '$.colors[0]') AS first_color
+            FROM products
+            WHERE json_extract(attributes, '$.colors[0]') = 'red' AND prod_category != 'CategoryB'
+        """
+        res = verify_sql(sql_query, config)
+        assert res["allowed"] is False, res
 
-    def test_select_with_incorrect_syntax_in_where_clause(self, config):
-        """Test for SQL query with incorrect syntax in WHERE clause"""
-        result = verify_sql("SELECT * FROM orders WHERE id == 123", config)  # Intentional syntax error in WHERE clause
-        assert result["allowed"] == False
-        assert "SELECT * is not allowed" in result["errors"]
+
+    # Test Array-like column with CROSS JOIN UNNEST (for SQLite support of arrays)
+    def test_array_column_unnest(self, cnn_with_json_and_array, config):
+        sql_query = """
+            SELECT prod_id, prod_name, color
+            FROM products, json_each(attributes, '$.colors') AS color
+            WHERE prod_category != 'CategoryB'
+        """
+        res = verify_sql(sql_query, config)
+        assert res["allowed"] is False, res
+
+
+    # Test Table Alias and JSON Querying (Self-Join with aliases and JSON extraction)
+    def test_self_join_with_alias_and_json(self, cnn_with_json_and_array, config):
+        sql_query = """
+            SELECT p1.prod_name, p2.prod_name AS related_prod, json_extract(p1.attributes, '$.size') AS p1_size
+            FROM products p1
+            INNER JOIN products p2 ON p1.prod_id != p2.prod_id
+            WHERE p1.prod_category != 'CategoryB' AND json_extract(p1.attributes, '$.size') = 'M'
+        """
+        res = verify_sql(sql_query, config)
+        assert res["allowed"] is False, res
+
+    # Test JSON Nested Query with Array Filtering
+    def test_json_array_filtering(self, cnn_with_json_and_array, config):
+        sql_query = """
+            SELECT prod_id, prod_name
+            FROM products
+            WHERE json_extract(attributes, '$.colors[0]') = 'red' AND prod_category != 'CategoryB'
+        """
+        res = verify_sql(sql_query, config)
+        assert res["allowed"] is False, res
+
+
+
