@@ -25,7 +25,7 @@ class _VerificationContext:
         self._errors = set()
         self._fixed = None
         self._config = config
-        self._dynamic_tables: Set[str] = set()
+        self._dynamic_tables: List[expr.TableAlias] = []
         self._dialect = dialect
         self._risk: List[float] = []
 
@@ -56,8 +56,12 @@ class _VerificationContext:
         return self._config
 
     @property
-    def dynamic_tables(self) -> Set[str]:
+    def dynamic_tables(self) -> List[expr.TableAlias]:
         return self._dynamic_tables
+
+    @property
+    def dynamic_tables_names(self) -> Set[str]:
+        return {t.alias_or_name for t in self._dynamic_tables}
 
     @property
     def dialect(self) -> str:
@@ -255,13 +259,16 @@ def _verify_query_statement(query_statement: expr.Query, context: _VerificationC
         _verify_query_statement(query_statement.right, context)
         return
     for cte in query_statement.ctes:
-        context.dynamic_tables.add(cte.alias)
+        _add_table_alias(cte, context)
         _verify_query_statement(cte.this, context)
     from_tables = _get_from_clause_tables(query_statement, context)
     for t in from_tables:
         found = False
         for config_t in context.config["tables"]:
-            if t.name == config_t["table_name"] or t.name in context.dynamic_tables:
+            if (
+                t.name == config_t["table_name"]
+                or t.name in context.dynamic_tables_names
+            ):
                 found = True
         if not found:
             context.add_error(f"Table {t.name} is not allowed", False, 1)
@@ -332,42 +339,30 @@ def _verify_col(
     """
     if (
         col.table == "sub_select"
-        or col.table != ""
-        and col.table in context.dynamic_tables
+        or (col.table != "" and col.table in context.dynamic_tables_names)
+        or (all(t.name in context.dynamic_tables_names for t in from_tables))
+        or (
+            col.table == ""
+            and col.name
+            in [c.alias_or_name for t in context.dynamic_tables for c in t.columns]
+        )
+        or (
+            any(
+                col.name in config_t["columns"]
+                for config_t in context.config["tables"]
+                for t in from_tables
+                if t.name == config_t["table_name"]
+            )
+        )
     ):
-        pass
-    elif not _find_column(col.name, from_tables, context):
+        return True
+    else:
         context.add_error(
             f"Column {col.name} is not allowed. Column removed from SELECT clause",
             True,
             0.3,
         )
         return False
-    return True
-
-
-def _find_column(
-    col_name: str, from_tables: List[expr.Table], result: _VerificationContext
-) -> bool:
-    """
-    Finds a column in the given tables based on the provided column name.
-
-    Args:
-        col_name (str): The name of the column to find.
-        from_tables (List[expr.Table]): The list of tables to search within.
-        result (_VerificationContext): The context for verification.
-
-    Returns:
-        bool: True if the column is found in any of the tables, False otherwise.
-    """
-    if all(t.name in result.dynamic_tables for t in from_tables):
-        return True
-    for t in from_tables:
-        for config_t in result.config["tables"]:
-            if t.name == config_t["table_name"]:
-                if col_name in config_t["columns"]:
-                    return True
-    return False
 
 
 def _get_from_clause_tables(
@@ -391,16 +386,22 @@ def _get_from_clause_tables(
             for t in _find_direct(clause, expr.Table):
                 if isinstance(t, expr.Table):
                     result.append(t)
-            for j in _find_direct(clause, expr.Subquery):
-                if j.alias != "":
-                    context.dynamic_tables.add(j.alias)
-                _verify_query_statement(j.this, context)
+            for l in _find_direct(clause, expr.Subquery):
+                _add_table_alias(l, context)
+                _verify_query_statement(l.this, context)
     if join_clause:
-        for j in _find_direct(clause, expr.Lateral):
-            if j.alias != "":
-                context.dynamic_tables.add(j.alias)
-            _verify_query_statement(j.this.find(expr.Select), context)
+        for l in _find_direct(join_clause, expr.Lateral):
+            _add_table_alias(l, context)
+            _verify_query_statement(l.this.find(expr.Select), context)
+        for u in _find_direct(join_clause, expr.Unnest):
+            _add_table_alias(u, context)
     return result
+
+
+def _add_table_alias(exp: expr.Expression, context: _VerificationContext):
+    for table_alias in _find_direct(exp, expr.TableAlias):
+        if isinstance(table_alias, expr.TableAlias):
+            context.dynamic_tables.append(table_alias)
 
 
 def _split_to_expressions(
