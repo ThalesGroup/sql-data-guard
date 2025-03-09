@@ -1,75 +1,11 @@
 import logging
-from typing import Optional, List, Generator, Set, Type
+from typing import List, Generator, Type
 
 import sqlglot
 import sqlglot.expressions as expr
 from sqlglot.optimizer.simplify import simplify
 
-
-class _VerificationContext:
-    """
-    Context for verifying SQL queries against a given configuration.
-
-    Attributes:
-        _can_fix (bool): Indicates if the query can be fixed.
-        _errors (List[str]): List of errors found during verification.
-        _fixed (Optional[str]): The fixed query if modifications were made.
-        _config (dict): The configuration used for verification.
-        _dynamic_tables (Set[str]): Set of dynamic tables found in the query, like sub select and WITH clauses.
-        _dialect (str): The SQL dialect to use for parsing.
-    """
-
-    def __init__(self, config: dict, dialect: str):
-        super().__init__()
-        self._can_fix = True
-        self._errors = set()
-        self._fixed = None
-        self._config = config
-        self._dynamic_tables: List[expr.TableAlias] = []
-        self._dialect = dialect
-        self._risk: List[float] = []
-
-    @property
-    def can_fix(self) -> bool:
-        return self._can_fix
-
-    def add_error(self, error: str, can_fix: bool, risk: float):
-        self._errors.add(error)
-        if not can_fix:
-            self._can_fix = False
-        self._risk.append(risk)
-
-    @property
-    def errors(self) -> Set[str]:
-        return self._errors
-
-    @property
-    def fixed(self) -> Optional[str]:
-        return self._fixed
-
-    @fixed.setter
-    def fixed(self, value: Optional[str]):
-        self._fixed = value
-
-    @property
-    def config(self) -> dict:
-        return self._config
-
-    @property
-    def dynamic_tables(self) -> List[expr.TableAlias]:
-        return self._dynamic_tables
-
-    @property
-    def dynamic_tables_names(self) -> Set[str]:
-        return {t.alias_or_name for t in self._dynamic_tables}
-
-    @property
-    def dialect(self) -> str:
-        return self._dialect
-
-    @property
-    def risk(self) -> float:
-        return sum(self._risk) / len(self._risk) if len(self._risk) > 0 else 0
+from sql_data_guard.verification_context import VerificationContext
 
 
 def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
@@ -88,7 +24,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             - "fixed" (Optional[str]): The fixed query if modifications were made.
             - "risk" (float): Verification risk score (0 - no risk, 1 - high risk)
     """
-    result = _VerificationContext(config, dialect)
+    result = VerificationContext(config, dialect)
     try:
         parsed = sqlglot.parse_one(sql, dialect=dialect)
     except sqlglot.errors.ParseError as e:
@@ -117,7 +53,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
 
 
 def _verify_where_clause(
-    context: _VerificationContext,
+    context: VerificationContext,
     select_statement: expr.Query,
     from_tables: List[expr.Table],
 ):
@@ -127,7 +63,7 @@ def _verify_where_clause(
 
 def _verify_restrictions(
     select_statement: expr.Query,
-    context: _VerificationContext,
+    context: VerificationContext,
     from_tables: List[expr.Table],
 ):
     where_clause = select_statement.find(expr.Where)
@@ -180,7 +116,7 @@ def _verify_restrictions(
 
 
 def _verify_static_expression(
-    select_statement: expr.Query, context: _VerificationContext
+    select_statement: expr.Query, context: VerificationContext
 ) -> bool:
     has_static_exp = False
     where_clause = select_statement.find(expr.Where)
@@ -194,7 +130,7 @@ def _verify_static_expression(
     return not has_static_exp
 
 
-def _has_static_expression(context: _VerificationContext, exp: expr.Expression) -> bool:
+def _has_static_expression(context: VerificationContext, exp: expr.Expression) -> bool:
     if isinstance(exp, expr.Not):
         return _has_static_expression(context, exp.this)
     result = False
@@ -253,7 +189,7 @@ def _verify_restriction(
     return False
 
 
-def _verify_query_statement(query_statement: expr.Query, context: _VerificationContext):
+def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
     if isinstance(query_statement, expr.Union):
         _verify_query_statement(query_statement.left, context)
         _verify_query_statement(query_statement.right, context)
@@ -265,10 +201,7 @@ def _verify_query_statement(query_statement: expr.Query, context: _VerificationC
     for t in from_tables:
         found = False
         for config_t in context.config["tables"]:
-            if (
-                t.name == config_t["table_name"]
-                or t.name in context.dynamic_tables_names
-            ):
+            if t.name == config_t["table_name"] or t.name in context.dynamic_tables:
                 found = True
         if not found:
             context.add_error(f"Table {t.name} is not allowed", False, 1)
@@ -280,7 +213,7 @@ def _verify_query_statement(query_statement: expr.Query, context: _VerificationC
 
 
 def _verify_select_clause(
-    context: _VerificationContext,
+    context: VerificationContext,
     select_clause: expr.Query,
     from_tables: List[expr.Table],
 ):
@@ -295,7 +228,7 @@ def _verify_select_clause(
 
 
 def _verify_select_clause_element(
-    from_tables: List[expr.Table], context: _VerificationContext, e: expr.Expression
+    from_tables: List[expr.Table], context: VerificationContext, e: expr.Expression
 ):
     if isinstance(e, expr.Column):
         if not _verify_col(e, from_tables, context):
@@ -324,7 +257,7 @@ def _verify_select_clause_element(
 
 
 def _verify_col(
-    col: expr.Column, from_tables: List[expr.Table], context: _VerificationContext
+    col: expr.Column, from_tables: List[expr.Table], context: VerificationContext
 ) -> bool:
     """
     Verifies if a column reference is allowed based on the provided tables and context.
@@ -332,19 +265,19 @@ def _verify_col(
     Args:
         col (Column): The column reference to verify.
         from_tables (List[_TableRef]): The list of tables to search within.
-        context (_VerificationContext): The context for verification.
+        context (VerificationContext): The context for verification.
 
     Returns:
         bool: True if the column reference is allowed, False otherwise.
     """
     if (
         col.table == "sub_select"
-        or (col.table != "" and col.table in context.dynamic_tables_names)
-        or (all(t.name in context.dynamic_tables_names for t in from_tables))
+        or (col.table != "" and col.table in context.dynamic_tables)
+        or (all(t.name in context.dynamic_tables for t in from_tables))
         or (
             col.table == ""
             and col.name
-            in [c.alias_or_name for t in context.dynamic_tables for c in t.columns]
+            in [col for t_cols in context.dynamic_tables.values() for col in t_cols]
         )
         or (
             any(
@@ -366,14 +299,14 @@ def _verify_col(
 
 
 def _get_from_clause_tables(
-    select_clause: expr.Query, context: _VerificationContext
+    select_clause: expr.Query, context: VerificationContext
 ) -> List[expr.Table]:
     """
     Extracts table references from the FROM clause of an SQL query.
 
     Args:
         select_clause (dict): The FROM clause of the SQL query.
-        context (_VerificationContext): The context for verification.
+        context (VerificationContext): The context for verification.
 
     Returns:
         List[_TableRef]: A list of table references to find in the FROM clause.
@@ -398,10 +331,12 @@ def _get_from_clause_tables(
     return result
 
 
-def _add_table_alias(exp: expr.Expression, context: _VerificationContext):
+def _add_table_alias(exp: expr.Expression, context: VerificationContext):
     for table_alias in _find_direct(exp, expr.TableAlias):
         if isinstance(table_alias, expr.TableAlias):
-            context.dynamic_tables.append(table_alias)
+            context.dynamic_tables[table_alias.alias_or_name] = {
+                col.alias_or_name for col in table_alias.columns
+            }
 
 
 def _split_to_expressions(
