@@ -344,6 +344,20 @@ class TestTrino:
             dialect="trino",
         )
 
+    def test_cross_join_unnest_access_column_with_alias(self, config):
+        verify_sql_test(
+            "SELECT t.val FROM highlights CROSS JOIN UNNEST(vals) AS t(val)",
+            config,
+            dialect="trino",
+        )
+
+    def test_cross_join_unnest_access_column_without_alias(self, config):
+        verify_sql_test(
+            "SELECT val FROM highlights CROSS JOIN UNNEST(vals) AS t(val)",
+            config,
+            dialect="trino",
+        )
+
 
 class TestRestrictionsWithDifferentDataTypes:
     @pytest.fixture(scope="class")
