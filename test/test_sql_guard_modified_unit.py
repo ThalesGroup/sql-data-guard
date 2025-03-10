@@ -270,6 +270,32 @@ class TestJoins:
                 "INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
             )
 
+
+# Trying to do array_col
+            conn.execute(
+                """
+                CREATE TABLE orders_db.products2 (
+                    id INT,
+                    prod_name TEXT,
+                    deliver TEXT,
+                    access TEXT,
+                    date TEXT,
+                    cust_id TEXT,
+                    category TEXT  -- JSON formatted array column
+                )"""
+            )
+
+            # Insert values into products1 table (JSON formatted array)
+            conn.execute(
+                "INSERT INTO products2 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1', '[""electronics"", ""fashion""]')"
+            )
+            conn.execute(
+                "INSERT INTO products2 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2', '[""books""]')"
+            )
+            conn.execute(
+                "INSERT INTO products2 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3', '[""sports"", ""toys""]')"
+            )
+
             # Creating customers table
             conn.execute(
                 """
@@ -298,11 +324,22 @@ class TestJoins:
                     "restrictions": [{"column": "id", "value": 324}],
                 },
                 {
+                    "table_name": "products2",
+                    "database_name": "orders_db",
+                    "columns": ["id", "prod_name", "category"],  # category stored as JSON
+                    "restrictions": [{"column": "id", "value": 324}],
+                },
+                {
                     "table_name": "customers",
                     "database_name": "orders_db",
                     "columns": ["cust_id", "cust_name", "access"],
                     "restrictions": [{"column": "access", "value": "restricted"}],
                 },
+                {
+                    "table_name": "highlights",
+                    "database_name": "countdb",
+                    "columns": ["vals", "anomalies","id"],
+                }
             ]
         }
 
@@ -447,3 +484,57 @@ class TestJoins:
             cnn=cnn,
             data=[(1, "prod1")],
         )
+
+    def test_array_col(self,config,cnn):
+        sql = """
+        SELECT id, prod_name FROM products2
+        WHERE (category LIKE '%electronics%') AND id = 324
+        """
+        res = verify_sql(sql, config)
+        assert res["allowed"] == True, res
+        print(cnn.execute(sql).fetchall())
+        assert cnn.execute(sql).fetchall() == [(324, "prod1")]
+
+    def test_cross_join_alias(self,config,cnn):
+        sql = """SELECT p1.id, p2.id FROM products1 AS p1 
+        CROSS JOIN products1 AS p2 WHERE p1.id = 324 AND p2.id = 324"""
+        res = verify_sql(sql,config)
+        assert res["allowed"] == True, res
+        print(cnn.execute(sql).fetchall())
+
+    def test_self_join(self,config,cnn):
+        sql = """SELECT p1.id, p2.id from products1 as p1
+        inner join products1 as p2 on p1.id = p2.id WHERE p1.id = 324 and p2.id = 324"""
+        res = verify_sql(sql, config)
+        assert res["allowed"] == True, res
+        print(cnn.execute(sql).fetchall())
+
+    def test_customers_restriction(self,config):
+        sql = "SELECT cust_id, cust_name FROM customers WHERE (cust_id = 'c1') AND access = 'restricted'"
+        res = verify_sql(sql, config)
+        assert res["allowed"] == True, res
+
+    def test_json_field_products1(self,config,cnn):
+        sql = "SELECT json_extract(category, '$[0]') FROM products2 WHERE id = 324"
+        res = verify_sql(sql, config)
+        assert res["allowed"] == True, res
+
+    def test_unnest_using_trino_array_val_cross_join(self,config):
+        verify_sql_test('''SELECT val FROM (VALUES (ARRAY[1, 2, 3])) 
+        AS highlights(vals) CROSS JOIN UNNEST(vals) AS t(val)''',
+        config,dialect="trino")
+
+    def test_unnest_using_trino_insert(self,config):
+        verify_sql_test("INSERT INTO highlights VALUES (1, ARRAY[10, 20, 30])",config,
+        dialect="trino", errors={'INSERT statement is not allowed'})
+
+    def test_unnest_using_trino_cross_join(self,config):
+        verify_sql_test("SELECT t.val FROM highlights CROSS JOIN UNNEST(vals) AS t(val)",config
+        ,dialect="trino")
+
+    def test_unnest_using_trino_multi_col_alias(self,config):
+        verify_sql_test("SELECT t.val, h.id FROM highlights AS h CROSS JOIN UNNEST(h.vals) AS t(val)",
+        config,dialect="trino")
+
+    def test_unnest_using_trino_no_alias(self,config):
+        verify_sql_test("SELECT anomalies from highlights CROSS JOIN UNNEST(vals)",config,dialect="trino")
