@@ -5,7 +5,8 @@ import sqlglot
 import sqlglot.expressions as expr
 from sqlglot.optimizer.simplify import simplify
 
-from sql_data_guard.verification_context import VerificationContext
+from .verification_context import VerificationContext
+from .restriction_validation import validate_restrictions, UnsupportedRestrictionError
 
 
 def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
@@ -24,6 +25,13 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             - "fixed" (Optional[str]): The fixed query if modifications were made.
             - "risk" (float): Verification risk score (0 - no risk, 1 - high risk)
     """
+
+    # First, validate restrictions
+    try:
+        validate_restrictions(config)
+    except UnsupportedRestrictionError as e:
+        return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
+    # ___
     result = VerificationContext(config, dialect)
     try:
         parsed = sqlglot.parse_one(sql, dialect=dialect)
