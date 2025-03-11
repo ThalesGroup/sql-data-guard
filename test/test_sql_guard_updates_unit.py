@@ -6,6 +6,7 @@ import pytest
 
 from sql_data_guard import verify_sql
 from conftest import verify_sql_test
+from sql_data_guard.build_multiple_values import build_query
 
 
 class TestInvalidQueries:
@@ -539,3 +540,10 @@ class TestJoins:
         sql = "SELECT id from products1 where date between '26-02-2025' and '28-02-2025' and id = 324"
         res = verify_sql(sql, config)
         assert res["allowed"] == True, res
+
+
+class TestMultipleRestriction:
+    def test_build_query(self):
+        filters = [{"column": "id", "values": [1, 2, 3]}]
+        expected_query = "SELECT * FROM my_table WHERE id IN (1, 2, 3)"
+        assert build_query(filters) == expected_query
