@@ -14,8 +14,15 @@ def validate_restrictions(config: dict):
     """
     supported_operations = ["=", ">", "<", ">=", "<=", "!="]  # Allowed operations
 
-    for table in config["tables"]:
-        for restriction in table.get("restrictions", []):
+    # Ensure 'tables' exists in config to avoid KeyError
+    tables = config.get("tables", [])
+
+    for table in tables:
+        restrictions = table.get("restrictions", [])
+        if not restrictions:
+            continue  # Skip if no restrictions are provided
+
+        for restriction in restrictions:
             operation = restriction.get("operation")
             if operation and operation.lower() not in supported_operations:
                 raise UnsupportedRestrictionError(
