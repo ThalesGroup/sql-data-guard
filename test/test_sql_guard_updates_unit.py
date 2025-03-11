@@ -6,7 +6,7 @@ import pytest
 
 from sql_data_guard import verify_sql
 from conftest import verify_sql_test
-from sql_data_guard.build_multiple_values import build_query
+from sql_data_guard.builder_multiple_values import build_query
 
 
 class TestInvalidQueries:
