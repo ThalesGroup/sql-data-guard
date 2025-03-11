@@ -547,3 +547,8 @@ class TestMultipleRestriction:
         filters = [{"column": "id", "values": [1, 2, 3]}]
         expected_query = "SELECT * FROM my_table WHERE id IN (1, 2, 3)"
         assert build_query(filters) == expected_query
+
+    def test_build_query_new(self):
+        filters = [{"column": "status", "values": ["pending", "shipped"]}]
+        expected_query = "SELECT * FROM orders WHERE status IN ('pending', 'shipped')"
+        assert build_query(filters) == expected_query
