@@ -21,15 +21,19 @@ class TestSQLJoins:
                     "database_name": "orders_db",
                     "columns": ["prod_id", "prod_name", "category", "price"],
                     "restrictions": [
-                        {"column": "price", "value": 100, "operation": ">="}  # Restriction on price column
-                    ]
+                        {
+                            "column": "price",
+                            "value": 100,
+                            "operation": ">=",
+                        }  # Restriction on price column
+                    ],
                 },
                 {
                     "table_name": "orders",
                     "database_name": "orders_db",
                     "columns": ["order_id", "prod_id"],
-                    "restrictions": []
-                }
+                    "restrictions": [],
+                },
             ]
         }
 
@@ -37,25 +41,32 @@ class TestSQLJoins:
     def cnn(self):
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
-            conn.execute("""
+            conn.execute(
+                """
                    CREATE TABLE orders_db.products (
                        prod_id INT, 
                        prod_name TEXT, 
                        category TEXT, 
                        price REAL
-                   )""")
-            conn.execute("""
+                   )"""
+            )
+            conn.execute(
+                """
                    CREATE TABLE orders_db.orders (
                        order_id INT,
                        prod_id INT
-                   )""")
+                   )"""
+            )
 
-            conn.execute("INSERT INTO orders_db.products VALUES (1, 'Product1', 'CategoryA', 120)")
-            conn.execute("INSERT INTO orders_db.products VALUES (2, 'Product2', 'CategoryB', 80)")
+            conn.execute(
+                "INSERT INTO orders_db.products VALUES (1, 'Product1', 'CategoryA', 120)"
+            )
+            conn.execute(
+                "INSERT INTO orders_db.products VALUES (2, 'Product2', 'CategoryB', 80)"
+            )
             conn.execute("INSERT INTO orders_db.orders VALUES (1, 1)")
             conn.execute("INSERT INTO orders_db.orders VALUES (2, 2)")
             yield conn
-
 
     def test_inner_join_using(self, config):
         verify_sql_test(
@@ -63,7 +74,8 @@ class TestSQLJoins:
             "FROM products INNER JOIN orders USING (prod_id) WHERE price = 100",
             config,
         )
-    def test_inner_join_with_restriction(self,config):
+
+    def test_inner_join_with_restriction(self, config):
         verify_sql_test(
             "SELECT prod_name "
             "FROM products INNER JOIN orders USING (prod_id) WHERE price > 100 AND price = 100",
@@ -102,7 +114,10 @@ class TestSQLJoins:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
         # Adjust the expected error message to reflect the restriction on price = 100, not price >= 100
-        assert "Missing restriction for table: products column: price value: 100" in res["errors"], res
+        assert (
+            "Missing restriction for table: products column: price value: 100"
+            in res["errors"]
+        ), res
 
     def test_left_join_with_price_greater_than_or_equal_50(self, config):
         sql_query = """
@@ -123,7 +138,10 @@ class TestSQLJoins:
            """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
-        assert "Missing restriction for table: products column: price value: 100" in res["errors"], res
+        assert (
+            "Missing restriction for table: products column: price value: 100"
+            in res["errors"]
+        ), res
 
     def test_full_outer_join_with_no_matching_rows(self, config):
         sql_query = """
@@ -145,7 +163,10 @@ class TestSQLJoins:
            """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
-        assert "Missing restriction for table: products column: price value: 100" in res["errors"], res
+        assert (
+            "Missing restriction for table: products column: price value: 100"
+            in res["errors"]
+        ), res
 
     def test_inner_join_on_specific_prod_id(self, config):
         sql_query = """
@@ -178,7 +199,6 @@ class TestSQLJoins:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
 
-
     def test_right_join_with_no_matching_prod_id(self, config):
         sql_query = """
                SELECT prod_name
@@ -189,8 +209,6 @@ class TestSQLJoins:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is True, res
         assert res["errors"] == set(), res
-
-
 
 
 class TestSQLJsonArrayQueries:
@@ -204,59 +222,79 @@ class TestSQLJsonArrayQueries:
                 {
                     "table_name": "products",
                     "database_name": "orders_db",
-                    "columns": ["prod_id", "prod_name", "prod_category", "price", "attributes"],
+                    "columns": [
+                        "prod_id",
+                        "prod_name",
+                        "prod_category",
+                        "price",
+                        "attributes",
+                    ],
                     "restrictions": [
-                        {"column": "prod_category", "value": "CategoryB", "operation": "!="}
+                        {
+                            "column": "prod_category",
+                            "value": "CategoryB",
+                            "operation": "!=",
+                        }
                         # Restriction on prod_category: not equal to "CategoryB"
-                    ]
+                    ],
                 },
                 {
                     "table_name": "orders",
                     "database_name": "orders_db",
                     "columns": ["order_id", "prod_id"],
-                    "restrictions": []  # No restrictions for the 'orders' table
-                }
+                    "restrictions": [],  # No restrictions for the 'orders' table
+                },
             ]
         }
         # Additional Fixture for JSON and Array tests
+
     @pytest.fixture(scope="class")
     def cnn_with_json_and_array(self):
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
             # Creating 'products' table with JSON and array-like column
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE orders_db.products (
                     prod_id INT,
                     prod_name TEXT,
                     prod_category TEXT,
                     price REAL,
                     attributes JSON
-                )""")
+                )"""
+            )
 
             # Creating a second table 'orders'
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE orders_db.orders (
                     order_id INT,
                     prod_id INT
-                )""")
+                )"""
+            )
 
             # Insert sample data with JSON column
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price, attributes)
                 VALUES (1, 'Product1', 'CategoryA', 120, '{"colors": ["red", "blue"], "size": "M"}')
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price, attributes)
                 VALUES (2, 'Product2', 'CategoryB', 80, '{"colors": ["green"], "size": "S"}')
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 INSERT INTO orders_db.orders (order_id, prod_id) 
                 VALUES (1, 1), (2, 2)
-            """)
+            """
+            )
 
             yield conn
-
 
     # Test Array-like column using JSON with the updated restriction on prod_category
     def test_array_column_query_with_json(self, cnn_with_json_and_array, config):
@@ -298,7 +336,6 @@ class TestSQLJsonArrayQueries:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
 
-
     # Test Array-like column with CROSS JOIN UNNEST (for SQLite support of arrays)
     def test_array_column_unnest(self, cnn_with_json_and_array, config):
         sql_query = """
@@ -308,7 +345,6 @@ class TestSQLJsonArrayQueries:
         """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
-
 
     # Test Table Alias and JSON Querying (Self-Join with aliases and JSON extraction)
     def test_self_join_with_alias_and_json(self, cnn_with_json_and_array, config):
@@ -322,7 +358,7 @@ class TestSQLJsonArrayQueries:
         assert res["allowed"] is False, res
 
     # Test JSON Nested Query with Array Filtering
-    def test_json_array_filtering(self, cnn_with_json_and_array, config):
+    def test_json_nested_array_filtering(self, cnn_with_json_and_array, config):
         sql_query = """
             SELECT prod_id, prod_name
             FROM products
@@ -331,7 +367,45 @@ class TestSQLJsonArrayQueries:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
 
+    def test_query_json_array_filter(self, cnn_with_json_and_array, config):
+        query = """
+        SELECT prod_id, prod_name, prod_category, price, attributes
+        FROM orders_db.products
+        WHERE JSON_EXTRACT(attributes, '$.colors[0]') = 'red'
+        """
+        # result = verify_sql(query, config)
+        # assert result["allowed"] is False, result
 
+        result = cnn_with_json_and_array.execute(query).fetchall()
+        assert len(result) == 1  # Only Product1 should match the color "red"
+        assert result[0][1] == "Product1"  # Ensure it's the correct product
+
+    def test_query_json_array_non_matching(self, cnn_with_json_and_array, config):
+        query = """
+        SELECT prod_id, prod_name, prod_category, price, attributes
+        FROM orders_db.products
+        WHERE JSON_EXTRACT(attributes, '$.colors[0]') = 'yellow'
+        """
+        # result = verify_sql(query, config)
+        # assert result["allowed"] is False, result
+
+        result = cnn_with_json_and_array.execute(query).fetchall()
+        assert len(result) == 0  # No product should match the color "yellow"
+
+    def test_query_json_array_multiple_colors(self, cnn_with_json_and_array, config):
+        query = """
+        SELECT prod_id, prod_name, prod_category, price, attributes
+        FROM orders_db.products
+        WHERE JSON_ARRAY_LENGTH(JSON_EXTRACT(attributes, '$.colors')) > 1
+        """
+        # result = verify_sql(query, config)
+        # assert result["allowed"] is False, result
+
+        result = cnn_with_json_and_array.execute(query).fetchall()
+        assert (
+            len(result) == 1
+        )  # Only Product1 should match (has two colors: "red" and "blue")
+        assert result[0][1] == "Product1"
 
 
 # Test class that contains all the SQL cases for various SQL scenarios
@@ -346,17 +420,23 @@ class TestSQLOrderDateBetweenRestrictions:
                 {
                     "table_name": "products",
                     "database_name": "orders_db",
-                    "columns": ["prod_id", "prod_name", "prod_category", "price", "stock"],
+                    "columns": [
+                        "prod_id",
+                        "prod_name",
+                        "prod_category",
+                        "price",
+                        "stock",
+                    ],
                     "restrictions": [
                         {"column": "price", "value": [80, 150], "operation": "BETWEEN"}
-                    ]
+                    ],
                 },
                 {
                     "table_name": "orders",
                     "database_name": "orders_db",
                     "columns": ["order_id", "prod_id", "quantity", "order_date"],
-                    "restrictions": []  # No restrictions for the 'orders' table
-                }
+                    "restrictions": [],  # No restrictions for the 'orders' table
+                },
             ]
         }
 
@@ -367,7 +447,8 @@ class TestSQLOrderDateBetweenRestrictions:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
             # Creating 'products' table with price and stock columns
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE orders_db.products (
                     prod_id INT,
                     prod_name TEXT,
@@ -375,37 +456,44 @@ class TestSQLOrderDateBetweenRestrictions:
                     price REAL,
                     stock INT
                 )
-            """)
+            """
+            )
 
             # Creating 'orders' table
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE orders_db.orders (
                     order_id INT,
                     prod_id INT,
                     quantity INT,
                     order_date DATE
                 )
-            """)
+            """
+            )
 
             # Inserting sample data into the 'products' table
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price, stock) 
                 VALUES 
                     (1, 'Product A', 'CategoryA', 120, 50),
                     (2, 'Product B', 'CategoryB', 80, 30),
                     (3, 'Product C', 'CategoryA', 150, 20),
                     (4, 'Product D', 'CategoryB', 60, 100)
-            """)
+            """
+            )
 
             # Inserting sample data into the 'orders' table
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO orders_db.orders (order_id, prod_id, quantity, order_date) 
                 VALUES 
                     (1, 1, 10, '03-01-2025'),
                     (2, 2, 5, '02-02-2025'),
                     (3, 3, 7, '03-03-2025'),
                     (4, 4, 12, '16-01-2025')
-            """)
+            """
+            )
 
             yield conn
 
@@ -416,7 +504,9 @@ class TestSQLOrderDateBetweenRestrictions:
             FROM products
             WHERE price BETWEEN 80 AND 150
         """
-        res = verify_sql(sql_query, config)  # This uses your verify_sql function from config.py
+        res = verify_sql(
+            sql_query, config
+        )  # This uses your verify_sql function from config.py
         assert res["allowed"] is False, res
 
     # Test case for price not within the range using the `NOT BETWEEN` operator
@@ -440,10 +530,10 @@ class TestSQLOrderDateBetweenRestrictions:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
 
-
-
     # Test case for combining price `BETWEEN` and product category restriction
-    def test_price_between_and_category_restriction(self, cnn_with_json_and_array, config):
+    def test_price_between_and_category_restriction(
+        self, cnn_with_json_and_array, config
+    ):
         sql_query = """
             SELECT prod_id, prod_name, price, prod_category
             FROM products

@@ -15,11 +15,11 @@ jobs:
       - name: Update python and install dependencies
         uses: ./.github/actions/cached-requirements
 
-      - name: Install test dependencies
+      - name: Install project and test dependencies
         run: |
           source .venv/bin/activate
-          pip install pytest
-          pip install flask
+          pip install -r requirements.txt  # Install main project dependencies
+          pip install -r test_requirements.txt  # Install additional test dependencies
 
       - name: Run unit tests
         run: |
