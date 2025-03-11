@@ -8,36 +8,6 @@ from sql_data_guard import verify_sql
 from conftest import verify_sql_test
 
 
-def _test_sql(
-    sql: str,
-    config: dict,
-    errors: Set[str] = None,
-    fix: str = None,
-    dialect: str = "sqlite",
-    cnn: Connection = None,
-    data: list = None,
-):
-    result = verify_sql(sql, config, dialect)
-    if errors is None:
-        assert result["errors"] == set()
-    else:
-        assert set(result["errors"]) == set(errors)
-    if len(result["errors"]) > 0:
-        assert result["risk"] > 0
-    else:
-        assert result["risk"] == 0
-    if fix is None:
-        assert result.get("fixed") is None
-        sql_to_use = sql
-    else:
-        assert result["fixed"] == fix
-        sql_to_use = result["fixed"]
-    if cnn and data:
-        fetched_data = cnn.execute(sql_to_use).fetchall()
-        if data is not None:
-            assert fetched_data == [tuple(row) for row in data]
-
-
 class TestInvalidQueries:
 
     @pytest.fixture(scope="class")
@@ -484,7 +454,6 @@ class TestJoins:
         sql = """SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 and access = 'granted'  GROUP BY id"""
         res = verify_sql(sql, config)
         assert res["allowed"] == True, res
-        print(cnn.execute(sql).fetchall())
         assert cnn.execute(sql).fetchall() == [(1, "prod1")]
 
     def test_distinct_and_group_by_missing_restriction(self, config, cnn):
@@ -505,7 +474,6 @@ class TestJoins:
         """
         res = verify_sql(sql, config)
         assert res["allowed"] == True, res
-        print(cnn.execute(sql).fetchall())
         assert cnn.execute(sql).fetchall() == [(324, "prod1")]
 
     def test_cross_join_alias(self, config, cnn):
@@ -513,14 +481,12 @@ class TestJoins:
         CROSS JOIN products1 AS p2 WHERE p1.id = 324 AND p2.id = 324"""
         res = verify_sql(sql, config)
         assert res["allowed"] == True, res
-        print(cnn.execute(sql).fetchall())
 
     def test_self_join(self, config, cnn):
         sql = """SELECT p1.id, p2.id from products1 as p1
         inner join products1 as p2 on p1.id = p2.id WHERE p1.id = 324 and p2.id = 324"""
         res = verify_sql(sql, config)
         assert res["allowed"] == True, res
-        print(cnn.execute(sql).fetchall())
 
     def test_customers_restriction(self, config):
         sql = "SELECT cust_id, cust_name FROM customers WHERE (cust_id = 'c1') AND access = 'restricted'"
@@ -573,4 +539,3 @@ class TestJoins:
         sql = "SELECT id from products1 where date between '26-02-2025' and '28-02-2025' and id = 324"
         res = verify_sql(sql, config)
         assert res["allowed"] == True, res
-        print(cnn.execute(sql).fetchall())

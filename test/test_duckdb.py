@@ -144,3 +144,18 @@ class TestDuckdbDialect:
             config,
         )
         assert res["allowed"] == True, res
+
+    def test_cross_join_not_allowed(self, config):
+        res = verify_sql(
+            """
+            SELECT p.name, s.trophies
+            FROM players p 
+            CROSS JOIN stats s
+            """,
+            config,
+        )
+        assert res["allowed"] == False, res
+        assert (
+            "Missing restriction for table: stats column: s.assists value: 234"
+            in res["errors"]
+        )
