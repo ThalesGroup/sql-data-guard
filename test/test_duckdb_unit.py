@@ -1,9 +1,33 @@
+from typing import Set, Generator
+
 import duckdb
 import pytest
 
-from sql_data_guard import verify_sql
 from conftest import verify_sql_test
-from conftest import verify_sql_test_duckdb
+from sql_data_guard import verify_sql
+
+
+def _fetch_dict(
+    con: duckdb.DuckDBPyConnection, query: str
+) -> Generator[dict, None, None]:
+    handle = con.sql(query)
+    while batch := handle.fetchmany(100):
+        for row in batch:
+            yield {c: row[idx] for idx, c in enumerate(handle.columns)}
+
+
+def _verify_sql_test_duckdb(
+    sql: str,
+    config: dict,
+    errors: Set[str] = None,
+    fix: str = None,
+    cnn: duckdb.DuckDBPyConnection = None,
+    data: list = None,
+):
+    sql_to_use = verify_sql_test(sql, config, errors, fix, "duckdb")
+    query_result = _fetch_dict(cnn, sql_to_use)
+    if data is not None:
+        assert list(query_result) == data
 
 
 class TestDuckdbDialect:
@@ -84,40 +108,42 @@ class TestDuckdbDialect:
         }
 
     def test_access_not_allowed(self, config):
-        verify_sql_test_duckdb(
+        _verify_sql_test_duckdb(
             "SELECT * FROM test_table",
             config,
             errors={"Table test_table is not allowed"},
         )
 
-    def test_access_with_restriction_pass(self, config):
-        verify_sql_test_duckdb(
+    def test_access_with_restriction_pass(self, config, cnn):
+        _verify_sql_test_duckdb(
             """SELECT name, position from players WHERE name = 'Ronaldo' AND position = 'CF' """,
             config,
+            cnn=cnn,
+            data=[{"name": "Ronaldo", "position": "CF"}],
         )
 
     def test_access_with_restriction(self, config, cnn):
-        verify_sql_test_duckdb(
+        _verify_sql_test_duckdb(
             """SELECT name, position from players WHERE 
             name = 'Ronaldo' AND position = 'CF' """,
             config,
         )
 
     def test_insertion_not_allowed(self, config):
-        verify_sql_test_duckdb(
+        _verify_sql_test_duckdb(
             "INSERT into players values('Lewandowski', 9, 'CF', 'Poland' )",
             config,
             errors={"INSERT statement is not allowed"},
         )
 
     def test_access_restricted(self, config):
-        verify_sql_test_duckdb(
+        _verify_sql_test_duckdb(
             """SELECT goals from stats where assists = 234""",
             config,
         )
 
     def test_aggregate_sum_goals(self, config, cnn):
-        res = verify_sql_test_duckdb(
+        res = _verify_sql_test_duckdb(
             "SELECT sum(goals) from stats where assists = 234", config
         )
 

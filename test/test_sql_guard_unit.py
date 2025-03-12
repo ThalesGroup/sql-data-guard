@@ -28,10 +28,14 @@ def _get_tests(file_name: str) -> Generator[dict, None, None]:
 class TestSQLErrors:
     def test_basic_sql_error(self):
         result = verify_sql("this is not an sql statement ", {})
+
         assert result["allowed"] == False
         assert len(result["errors"]) == 1
         error = next(iter(result["errors"]))
-        assert "Invalid expression / Unexpected token" in error
+        assert (
+            "Invalid configuration provided. The configuration must include 'tables'."
+            in error
+        )
 
 
 class TestSingleTable:

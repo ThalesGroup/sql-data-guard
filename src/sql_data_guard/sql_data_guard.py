@@ -25,6 +25,16 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             - "fixed" (Optional[str]): The fixed query if modifications were made.
             - "risk" (float): Verification risk score (0 - no risk, 1 - high risk)
     """
+    # Check if the config is empty or invalid (e.g., no 'tables' key)
+    if not config or not isinstance(config, dict) or "tables" not in config:
+        return {
+            "allowed": False,
+            "errors": [
+                "Invalid configuration provided. The configuration must include 'tables'."
+            ],
+            "fixed": None,
+            "risk": 1.0,
+        }
 
     # First, validate restrictions
     try:
