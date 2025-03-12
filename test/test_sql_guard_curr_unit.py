@@ -504,9 +504,20 @@ class TestSQLOrderDateBetweenRestrictions:
             FROM products
             WHERE price BETWEEN 80 AND 150
         """
-        res = verify_sql(
-            sql_query, config
-        )  # This uses your verify_sql function from config.py
+        # Execute the query using cnn_with_json_and_array and fetch all results
+        result = cnn_with_json_and_array.execute(sql_query).fetchall()
+        # Check if the result contains any products
+        assert (
+            len(result) > 0
+        ), "Expected results, but none found"  # Ensure at least one result is returned
+        # Check that the price of each product falls within the specified range (80 to 150)
+        for row in result:
+            assert (
+                80 <= row[2] <= 150
+            ), f"Price out of bounds: {row[2]} for product {row[1]}"
+        # After the query execution, use verify_sql to perform configuration-based validation
+        res = verify_sql(sql_query, config)
+        # Ensure that the result from verify_sql indicates the correct 'allowed' status (False)
         assert res["allowed"] is False, res
 
     # Test case for price not within the range using the `NOT BETWEEN` operator
@@ -583,3 +594,17 @@ class TestSQLOrderDateBetweenRestrictions:
         """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
+
+
+class TestSQLVerification:
+
+    def test_basic_sql_error(self):
+        result = verify_sql("this is not an sql statement ", {})
+
+        assert result["allowed"] == False
+        assert len(result["errors"]) == 1
+        error = next(iter(result["errors"]))
+        assert (
+            "Invalid configuration provided. The configuration must include 'tables'."
+            in error
+        )
