@@ -116,3 +116,49 @@ def test_unsupported_restriction_operation():
         match="Invalid restriction: 'operation=BETWEEN' is not supported.",
     ):
         validate_restrictions(config)
+
+
+def test_valid_greater_than_equal_restriction():
+    config = {
+        "tables": [
+            {
+                "table_name": "products",  # Table name
+                "columns": ["price"],  # Column name
+                "restrictions": [
+                    {
+                        "column": "price",  # Column name
+                        "value": 100,  # Value to compare
+                        "operation": ">=",  # 'Greater than or equal' operation
+                    },
+                ],
+            }
+        ]
+    }
+
+    try:
+        validate_restrictions(config)
+    except UnsupportedRestrictionError as e:
+        pytest.fail(f"Unexpected error: {e}")
+
+
+def test_valid_greater_than_equal_with_float_value():
+    config = {
+        "tables": [
+            {
+                "table_name": "products",  # Table name
+                "columns": ["price"],  # Column name
+                "restrictions": [
+                    {
+                        "column": "price",  # Column name
+                        "value": 99.99,  # Float value
+                        "operation": ">=",  # 'Greater than or equal' operation
+                    },
+                ],
+            }
+        ]
+    }
+
+    try:
+        validate_restrictions(config)
+    except UnsupportedRestrictionError as e:
+        pytest.fail(f"Unexpected error: {e}")

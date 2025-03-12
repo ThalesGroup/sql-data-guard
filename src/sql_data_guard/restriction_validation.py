@@ -59,6 +59,13 @@ def validate_restrictions(config: dict):
                     raise ValueError(
                         f"Invalid 'BETWEEN' format. Expected list of two numeric values where min < max."
                     )
+            if operation == ">=":
+                # You may want to ensure the value provided is numeric for >=
+                value = restriction.get("value")
+                if not isinstance(value, (int, float)):
+                    raise ValueError(
+                        f"Invalid restriction value type for column '{restriction['column']}' in table '{table['table_name']}'. Expected a numeric value."
+                    )
 
             # Validate the value type based on the column
             column = restriction.get("column")
