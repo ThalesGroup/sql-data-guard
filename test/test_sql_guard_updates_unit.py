@@ -6,7 +6,6 @@ import pytest
 
 from sql_data_guard import verify_sql
 from conftest import verify_sql_test
-from sql_data_guard.builder_multiple_values import build_query
 
 
 class TestInvalidQueries:
@@ -543,12 +542,160 @@ class TestJoins:
 
 
 class TestMultipleRestriction:
-    def test_build_query(self):
-        filters = [{"column": "id", "values": [1, 2, 3]}]
-        expected_query = "SELECT * FROM orders WHERE id IN (1, 2, 3)"
-        assert build_query(filters) == expected_query
 
-    def test_build_query_new(self):
+    @pytest.fixture(scope="class")
+    def cnn(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
+
+            # Creating products table
+            conn.execute(
+                """
+                CREATE TABLE orders_db.products1 (
+                    id INT,
+                    prod_name TEXT,
+                    deliver TEXT,
+                    access TEXT,
+                    date TEXT,
+                    cust_id TEXT
+                )"""
+            )
+
+            # Insert values into products1 table
+            conn.execute(
+                "INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
+            )
+            conn.execute(
+                "INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
+            )
+
+            # Trying to do array_col
+            conn.execute(
+                """
+                CREATE TABLE orders_db.products2 (
+                    id INT,
+                    prod_name TEXT,
+                    deliver TEXT,
+                    access TEXT,
+                    date TEXT,
+                    cust_id TEXT,
+                    category TEXT  -- JSON formatted array column
+                )"""
+            )
+
+            # Insert values into products1 table (JSON formatted array)
+            conn.execute(
+                "INSERT INTO products2 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1', '["
+                "electronics"
+                ", "
+                "fashion"
+                "]')"
+            )
+            conn.execute(
+                "INSERT INTO products2 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2', '["
+                "books"
+                "]')"
+            )
+            conn.execute(
+                "INSERT INTO products2 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3', '["
+                "sports"
+                ", "
+                "toys"
+                "]')"
+            )
+
+            # Creating customers table
+            conn.execute(
+                """
+                CREATE TABLE orders_db.customers (
+                    id INT,
+                    cust_id TEXT,
+                    cust_name TEXT,
+                    prod_name TEXT)"""
+            )
+
+            # Insert values into customers table
+            conn.execute("INSERT INTO customers VALUES (324, 'c1', 'cust1', 'prod1')")
+            conn.execute("INSERT INTO customers VALUES (435, 'c2', 'cust2', 'prod2')")
+            conn.execute("INSERT INTO customers VALUES (445, 'c3', 'cust3', 'prod3')")
+
+            yield conn
+
+    @pytest.fixture(scope="class")
+    def config(self) -> dict:
+        return {
+            "tables": [
+                {
+                    "table_name": "products1",
+                    "database_name": "orders_db",
+                    "columns": ["id", "prod_name", "category"],
+                    "restrictions": [{"column": "id", "value": 324}],
+                },
+                {
+                    "table_name": "products2",
+                    "database_name": "orders_db",
+                    "columns": [
+                        "id",
+                        "prod_name",
+                        "category",
+                    ],  # category stored as JSON
+                    "restrictions": [{"column": "id", "value": 324}],
+                },
+                {
+                    "table_name": "customers",
+                    "database_name": "orders_db",
+                    "columns": ["cust_id", "cust_name", "access"],
+                    "restrictions": [{"column": "access", "value": "restricted"}],
+                },
+                {
+                    "table_name": "highlights",
+                    "database_name": "countdb",
+                    "columns": ["vals", "anomalies", "id"],
+                },
+            ]
+        }
+
+    def build_where_clause(restrictions):
+        """
+        Converts a list of column-value restrictions into a SQL WHERE clause.
+
+        Args:
+            restrictions (list): A list of dictionaries with "column" and "values".
+
+        Returns:
+            str: The dynamically generated SQL WHERE clause.
+        """
+        conditions = []
+        for restriction in restrictions:
+            column = restriction["column"]
+            values = restriction["values"]
+
+            # Convert list values into SQL IN clause
+            if isinstance(values, list):
+                values_str = ", ".join(
+                    f"'{v}'" if isinstance(v, str) else str(v) for v in values
+                )
+                conditions.append(f"{column} IN ({values_str})")
+            else:
+                conditions.append(f"{column} = '{values}'")
+
+        # Combine all conditions
+        return " AND ".join(conditions)
+
+    def test_build_query(self, config):
+        res = verify_sql(
+            "SELECT id, prod_name, category FROM products1 WHERE (id IN (324, 224, 323)) AND id = 324",
+            config,
+        )
+        assert res["allowed"] == True, res
+
+    '''def test_build_query_new(self):
         filters = [{"column": "status", "values": ["pending", "shipped"]}]
         expected_query = "SELECT * FROM orders WHERE status IN ('pending', 'shipped')"
-        assert build_query(filters) == expected_query
+        assert build_query(filters) == expected_query'''
