@@ -19,7 +19,7 @@ jobs:
         run: |
           source .venv/bin/activate
           pip install -r requirements.txt  # Install main project dependencies
-          pip install -r test_requirements.txt  # Install additional test dependencies
+          pip install -r test/test_requirements.txt  # Install additional test dependencies
 
       - name: Run unit tests
         run: |
