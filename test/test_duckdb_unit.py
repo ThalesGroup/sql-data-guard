@@ -1,3 +1,4 @@
+from os import confstr_names
 from typing import Set, Generator
 
 import duckdb
@@ -124,9 +125,11 @@ class TestDuckdbDialect:
 
     def test_access_with_restriction(self, config, cnn):
         _verify_sql_test_duckdb(
-            """SELECT name, position from players WHERE 
-            name = 'Ronaldo' AND position = 'CF' """,
+            """SELECT p.name, p.position, s.goals from players p join stats s on 
+            p.name = s.player_name where p.name = 'Ronaldo' and p.position = 'CF' and s.assists = 234 """,
             config,
+            cnn=cnn,
+            data=[{"name": "Ronaldo", "position": "CF", "goals": 1030}],
         )
 
     def test_insertion_not_allowed(self, config):
@@ -136,20 +139,29 @@ class TestDuckdbDialect:
             errors={"INSERT statement is not allowed"},
         )
 
-    def test_access_restricted(self, config):
+    def test_access_restricted(self, config, cnn):
         _verify_sql_test_duckdb(
             """SELECT goals from stats where assists = 234""",
             config,
+            cnn=cnn,
+            data=[{"goals": 1030}],
         )
 
     def test_aggregate_sum_goals(self, config, cnn):
-        res = _verify_sql_test_duckdb(
-            "SELECT sum(goals) from stats where assists = 234", config
+        _verify_sql_test_duckdb(
+            "SELECT sum(goals) from stats where assists = 234",
+            config,
+            cnn=cnn,
+            data=[{"sum(goals)": 1030}],
         )
 
-    def test_aggregate_sum_assists_condition(self, config):
-        res = verify_sql("select sum(assists) from stats WHERE assists = 234", config)
-        assert res["allowed"] == True, res
+    def test_aggregate_sum_assists_condition(self, config, cnn):
+        _verify_sql_test_duckdb(
+            "select sum(assists) from stats WHERE assists = 234",
+            config,
+            cnn=cnn,
+            data=[{"sum(assists)": 234}],
+        )
 
     def test_update_not_allowed(self, config):
         res = verify_sql(
@@ -160,7 +172,7 @@ class TestDuckdbDialect:
         assert "UPDATE statement is not allowed" in res["errors"], res
 
     def test_inner_join(self, config, cnn):
-        res = verify_sql(
+        _verify_sql_test_duckdb(
             """
             SELECT p.name, s.assists
             FROM players p 
@@ -168,8 +180,9 @@ class TestDuckdbDialect:
             WHERE p.name = 'Ronaldo' AND p.position = 'CF' AND s.assists = 234
             """,
             config,
+            cnn=cnn,
+            data=[{"name": "Ronaldo", "assists": 234}],
         )
-        assert res["allowed"] == True, res
 
     def test_cross_join_not_allowed(self, config):
         res = verify_sql(
@@ -185,3 +198,32 @@ class TestDuckdbDialect:
             "Missing restriction for table: stats column: s.assists value: 234"
             in res["errors"]
         )
+
+    def test_cross_join_allowed(self, config, cnn):
+        sql = """
+            SELECT p.name, s.trophies
+            FROM players p 
+            CROSS JOIN stats s
+            WHERE p.name = 'Ronaldo' AND p.position = 'CF' and s.assists = 234
+            """
+        _verify_sql_test_duckdb(sql, config)
+
+        _fetch_dict(cnn, sql)
+        results = list(_fetch_dict(cnn, sql))
+
+        print(results)
+
+    def test_complex_join_query(self, config, cnn):
+        sql = """
+                    SELECT p.name, p.jersey_no, p.age, s.goals, 
+                    (s.goals + s.assists) as GA, s.trophies
+                    FROM players p 
+                    CROSS JOIN stats s
+                    WHERE p.name = 'Ronaldo' AND p.position = 'CF' and s.assists = 234
+                    """
+        _verify_sql_test_duckdb(sql, config)
+
+        _fetch_dict(cnn, sql)
+        results = list(_fetch_dict(cnn, sql))
+
+        print(results)
