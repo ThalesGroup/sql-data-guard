@@ -166,10 +166,14 @@ def _verify_static_expression(
 def _has_static_expression(context: VerificationContext, exp: expr.Expression) -> bool:
     if isinstance(exp, expr.Not):
         return _has_static_expression(context, exp.this)
+    if isinstance(exp, expr.And):
+        for sub_and_exp in _split_to_expressions(exp, expr.And):
+            if _has_static_expression(context, sub_and_exp):
+                return True
     result = False
     to_replace = []
     for sub_exp in _split_to_expressions(exp, expr.Or):
-        if isinstance(sub_exp, (expr.Or, expr.And)):
+        if isinstance(sub_exp, expr.Or):
             result = _has_static_expression(context, sub_exp)
         elif not sub_exp.find(expr.Column):
             context.add_error(
