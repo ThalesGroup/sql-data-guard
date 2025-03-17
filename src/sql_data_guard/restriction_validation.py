@@ -69,8 +69,3 @@ def validate_restrictions(config: dict):
             # Validate the value type based on the column
             column = restriction.get("column")
             value = restriction.get("value")
-
-            if column == "price" and not isinstance(value, (int, float)):
-                raise ValueError(
-                    f"Invalid value type for column '{column}'. Expected a numeric type."
-                )
