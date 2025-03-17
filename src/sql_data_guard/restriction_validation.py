@@ -19,7 +19,6 @@ def validate_restrictions(config: dict):
         "<",
         ">=",
         "<=",
-        "!=",
         "BETWEEN",
     ]  # Allowed operations
     # Ensure 'tables' exists in config and is not empty

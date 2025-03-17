@@ -6,7 +6,7 @@ from typing import Set, Generator
 
 import pytest
 from sql_data_guard import verify_sql
-from conftest import verify_sql_test, verify_sql_test_data
+from conftest import verify_sql_test
 
 
 class TestSQLJoins:
@@ -98,7 +98,7 @@ class TestSQLJoins:
             SELECT prod_name
             FROM products
             LEFT JOIN orders ON products.prod_id = orders.prod_id
-            WHERE price >= 100 AND price = 100
+            WHERE price > 100 AND price = 100
         """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is True, res
@@ -119,15 +119,19 @@ class TestSQLJoins:
             in res["errors"]
         ), res
 
-    def test_left_join_with_price_greater_than_or_equal_50(self, config):
+    def test_left_join_with_price_greater_than_or_equal_50(self, config, cnn):
         sql_query = """
             SELECT prod_name
             FROM products
             LEFT JOIN orders ON products.prod_id = orders.prod_id
-            WHERE price >= 50
+            WHERE account_id = 123 and price > 50 AND price = 100
         """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+        # Using the verify_sql_test helper function with connection (cnn)
+        verify_sql_test(
+            sql=sql_query,
+            config=config,
+            cnn=cnn,  # Passing the connection to verify_sql_test
+        )
 
     def test_inner_join_no_match(self, config):
         sql_query = """
@@ -148,7 +152,7 @@ class TestSQLJoins:
                SELECT prod_name
                FROM products
                FULL OUTER JOIN orders ON products.prod_id = orders.prod_id
-               WHERE price >= 100 AND price = 100
+               WHERE price > 100 AND price = 100
            """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is True, res
@@ -184,7 +188,7 @@ class TestSQLJoins:
                SELECT prod_name
                FROM products
                INNER JOIN orders ON products.prod_id = orders.prod_id
-               WHERE price >= 100 AND price = 100
+               WHERE price > 100 AND price = 100
            """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is True, res

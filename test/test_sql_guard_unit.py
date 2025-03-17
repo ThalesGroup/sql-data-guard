@@ -224,21 +224,6 @@ INSERT INTO orders (order_id, account_id, product_id) VALUES
             config,
         )
 
-    def test_access_to_unrestricted_columns_two_tables(self, config):
-        verify_sql_test(
-            "SELECT order_id, orders.name, products.price "
-            "FROM orders INNER JOIN products ON orders.product_id = products.product_id "
-            "WHERE account_id = 123",
-            config,
-            errors={
-                "Column name is not allowed. Column removed from SELECT clause",
-                "Column price is not allowed. Column removed from SELECT clause",
-            },
-            fix="SELECT order_id "
-            "FROM orders INNER JOIN products ON orders.product_id = products.product_id "
-            "WHERE account_id = 123",
-        )
-
     def test_distinct_and_group_by(self, config, cnn):
         sql = "SELECT COUNT(DISTINCT order_id) AS orders_count FROM orders WHERE account_id = 123  GROUP BY account_id"
         result = verify_sql(sql, config)

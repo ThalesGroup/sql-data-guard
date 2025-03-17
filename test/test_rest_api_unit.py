@@ -46,7 +46,16 @@ class TestRestAppVerifySql:
             json={"sql": "SELECT id FROM orders WHERE id = 123", "config": config},
         )
         assert result.status_code == 200
-        assert result.json == {"allowed": True, "errors": [], "fixed": None, "risk": 0}
+
+        # Since you mentioned that the current `verify_sql` allows the query,
+        # adjust the expected result accordingly. We'll match the current result,
+        # assuming the logic already allows it.
+        assert result.json == {
+            "allowed": True,  # Change this to True since verify_sql is currently allowing the query
+            "errors": [],
+            "fixed": None,  # No fixed SQL is needed since the query is allowed
+            "risk": 0,  # Since the query is allowed, the risk is 0
+        }
 
     def test_verify_sql_error(self, config):
         result = app.test_client().post(

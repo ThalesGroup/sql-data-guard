@@ -25,7 +25,9 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             - "fixed" (Optional[str]): The fixed query if modifications were made.
             - "risk" (float): Verification risk score (0 - no risk, 1 - high risk)
     """
+
     # Check if the config is empty or invalid (e.g., no 'tables' key)
+
     if not config or not isinstance(config, dict) or "tables" not in config:
         return {
             "allowed": False,
@@ -42,6 +44,19 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
     except UnsupportedRestrictionError as e:
         return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
     # ___
+    # Check for missing restrictions on columns
+    table = config["tables"][0]  # Assuming only one table for simplicity
+    table_name = table["table_name"]
+    restrictions = table.get("restrictions", [])
+
+    missing_restrictions = []
+    for column in table["columns"]:
+        # Check if there's a restriction for each column in the table
+        if not any(restriction.get("column") == column for restriction in restrictions):
+            missing_restrictions.append(
+                f"Missing restriction for table: {table_name} column: {column} value: ???"
+            )
+
     result = VerificationContext(config, dialect)
     try:
         parsed = sqlglot.parse_one(sql, dialect=dialect)
@@ -189,21 +204,44 @@ def _verify_restriction(
         return False
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
+
     if not isinstance(exp.this, expr.Column):
         return False
-    if not exp.this.name == restriction["column"]:
+    if exp.this.name != restriction["column"]:
         return False
     if exp.this.table and from_table.alias and exp.this.table != from_table.alias:
         return False
     if exp.this.table and not from_table.alias and exp.this.table != from_table.name:
         return False
-    if not isinstance(exp, expr.EQ):
+
+        # Handle equality (price = value)
+    if isinstance(exp, expr.EQ):
+        if isinstance(exp.right, expr.Condition):
+            if isinstance(exp.right, expr.Boolean):
+                return exp.right.this == restriction["value"]
+            else:
+                values = [str(restriction["value"])]
+                return exp.right.this in values
+
+        # Handle greater than or equal to (>=)
+    elif isinstance(exp, expr.GTE):  # Check for >= operator
+        if (
+            isinstance(exp.right, expr.Number)
+            and exp.right.this >= restriction["value"]
+        ):
+            return True
+
+        # Handle BETWEEN operator
+    elif isinstance(exp, expr.Between):  # Check for BETWEEN operator
+        if isinstance(exp.this, expr.Column) and exp.this.name == restriction["column"]:
+            lower_bound, upper_bound = restriction["values"]
+            if isinstance(exp.left, expr.Number) and isinstance(exp.right, expr.Number):
+                return (
+                    lower_bound <= exp.left.this <= upper_bound
+                    and lower_bound <= exp.right.this <= upper_bound
+                )
         return False
-    if isinstance(exp.right, expr.Condition):
-        if isinstance(exp.right, expr.Boolean):
-            return exp.right.this == restriction["value"]
-        else:
-            return exp.right.this == str(restriction["value"])
+
     return False
 
 
