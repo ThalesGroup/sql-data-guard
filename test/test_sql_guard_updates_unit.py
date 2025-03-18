@@ -566,7 +566,7 @@ class TestMultipleRestriction:
                 "INSERT INTO products1 VALUES ('324', 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
             )
             conn.execute(
-                "INSERT INTO products1 VALUES ('324', 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
+                "INSERT INTO products1 VALUES ('325', 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
             )
             conn.execute(
                 "INSERT INTO products1 VALUES ('435', 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
@@ -662,6 +662,34 @@ class TestMultipleRestriction:
                 },
             ]
         }
+
+    @pytest.mark.skip("Not implemented")
+    def test_basic_query_value_inside_in_clause_using_eq(self, config, cnn):
+        verify_sql_test(
+            "SELECT id FROM products1 WHERE id = 324", config, cnn=cnn, data=[["324"]]
+        )
+
+    @pytest.mark.skip("Not implemented")
+    def test_basic_query_value_inside_in_clause_using_in(self, config, cnn):
+        verify_sql_test(
+            "SELECT id FROM products1 WHERE id IN (324)",
+            config,
+            cnn=cnn,
+            data=[["324"]],
+        )
+
+    @pytest.mark.skip("Not implemented")
+    def test_basic_query_value_not_inside_in_clause(self, config, cnn):
+        verify_sql_test(
+            "SELECT id FROM products1 WHERE id = 999",
+            config=config,
+            errors={
+                "Missing restriction for table: products1 column: id value: 324, 224"
+            },
+            fix="SELECT id FROM products1 WHERE (id = 999) AND (id IN (324, 224))",
+            cnn=cnn,
+            data=[],
+        )
 
     def test_query_with_in_operator(self, config):
         res = verify_sql(
