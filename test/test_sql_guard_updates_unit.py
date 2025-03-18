@@ -698,6 +698,9 @@ class TestMultipleRestriction:
         )
         assert res["allowed"] == True, res
 
-    def test_in_operation_orders(self, config):
-        res = verify_sql("SELECT id FROM orders WHERE id IN (1, 2, 123)", config)
+    def test_in_operator_with_between(self, config):
+        res = verify_sql(
+            """SELECT id FROM products1 WHERE (id IN ('324', '224') AND date BETWEEN '2024-01-01' AND '2025-01-01') AND id = '324, 224'""",
+            config,
+        )
         assert res["allowed"] == True, res
