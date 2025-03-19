@@ -19,7 +19,9 @@ def validate_restrictions(config: dict):
         "<",
         ">=",
         "<=",
+        "!=",
         "BETWEEN",
+        "IN",
     ]  # Allowed operations
     # Ensure 'tables' exists in config and is not empty
     tables = config.get("tables", [])
@@ -43,10 +45,6 @@ def validate_restrictions(config: dict):
 
         for restriction in restrictions:
             operation = restriction.get("operation")
-            if operation and operation.lower() not in supported_operations:
-                raise UnsupportedRestrictionError(
-                    f"Invalid restriction: 'operation={operation}' is not supported."
-                )
             if operation == "BETWEEN":
                 values = restriction.get("values")
                 if not (
@@ -58,7 +56,7 @@ def validate_restrictions(config: dict):
                     raise ValueError(
                         f"Invalid 'BETWEEN' format. Expected list of two numeric values where min < max."
                     )
-            if operation == ">=":
+            elif operation == ">=":
                 # You may want to ensure the value provided is numeric for >=
                 value = restriction.get("value")
                 if not isinstance(value, (int, float)):
@@ -66,6 +64,43 @@ def validate_restrictions(config: dict):
                         f"Invalid restriction value type for column '{restriction['column']}' in table '{table['table_name']}'. Expected a numeric value."
                     )
 
+            elif operation == "IN":
+
+                column = restriction.get("column")  # Ensure 'column' is extracted
+
+                values = restriction.get("values") or restriction.get("value")
+
+                if isinstance(values, str):  # Convert comma-separated string to a list
+
+                    values = [v.strip() for v in values.split(",")]
+
+                if not (
+                    isinstance(values, list) and all(isinstance(v, str) for v in values)
+                ):
+                    raise ValueError(
+                        f"Invalid restriction value for 'IN' operation. Expected a comma-separated string of values."
+                    )
+
+                # Convert list into proper SQL format
+
+                values_str = ", ".join(
+                    f"'{v}'" for v in values
+                )  # Add quotes for SQL syntax
+
+                sql_condition = (
+                    f"{column} IN ({values_str})"  # Now column is properly defined
+                )
+
+            elif operation and operation.lower() not in supported_operations:
+                raise UnsupportedRestrictionError(
+                    f"Invalid restriction: 'operation={operation}' is not supported."
+                )
+
             # Validate the value type based on the column
             column = restriction.get("column")
             value = restriction.get("value")
+
+            if column == "price" and not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"Invalid value type for column '{column}'. Expected a numeric type."
+                )

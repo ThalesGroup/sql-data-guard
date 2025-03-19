@@ -164,12 +164,11 @@ class TestDuckdbDialect:
         )
 
     def test_update_not_allowed(self, config):
-        res = verify_sql(
+        _verify_sql_test_duckdb(
             "UPDATE players SET national_team = 'Portugal' WHERE name = 'Messi'",
             config,
+            errors={"UPDATE statement is not allowed"},
         )
-        assert res["allowed"] == False, res
-        assert "UPDATE statement is not allowed" in res["errors"], res
 
     def test_inner_join(self, config, cnn):
         _verify_sql_test_duckdb(
@@ -200,30 +199,37 @@ class TestDuckdbDialect:
         )
 
     def test_cross_join_allowed(self, config, cnn):
-        sql = """
+        _verify_sql_test_duckdb(
+            """
             SELECT p.name, s.trophies
             FROM players p 
             CROSS JOIN stats s
             WHERE p.name = 'Ronaldo' AND p.position = 'CF' and s.assists = 234
-            """
-        _verify_sql_test_duckdb(sql, config)
-
-        _fetch_dict(cnn, sql)
-        results = list(_fetch_dict(cnn, sql))
-
-        print(results)
+            """,
+            config,
+            cnn=cnn,
+            data=[{"name": "Ronaldo", "trophies": 37}],
+        )
 
     def test_complex_join_query(self, config, cnn):
-        sql = """
+        _verify_sql_test_duckdb(
+            """
                     SELECT p.name, p.jersey_no, p.age, s.goals, 
                     (s.goals + s.assists) as GA, s.trophies
                     FROM players p 
                     CROSS JOIN stats s
                     WHERE p.name = 'Ronaldo' AND p.position = 'CF' and s.assists = 234
-                    """
-        _verify_sql_test_duckdb(sql, config)
-
-        _fetch_dict(cnn, sql)
-        results = list(_fetch_dict(cnn, sql))
-
-        print(results)
+                    """,
+            config,
+            cnn=cnn,
+            data=[
+                {
+                    "name": "Ronaldo",
+                    "jersey_no": 7,
+                    "age": 40,
+                    "goals": 1030,
+                    "GA": 1264,
+                    "trophies": 37,
+                }
+            ],
+        )

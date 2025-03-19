@@ -552,7 +552,7 @@ class TestMultipleRestriction:
             conn.execute(
                 """
                 CREATE TABLE orders_db.products1 (
-                    id INT,
+                    id TEXT,
                     prod_name TEXT,
                     deliver TEXT,
                     access TEXT,
@@ -563,16 +563,16 @@ class TestMultipleRestriction:
 
             # Insert values into products1 table
             conn.execute(
-                "INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
+                "INSERT INTO products1 VALUES ('324', 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
             )
             conn.execute(
-                "INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
+                "INSERT INTO products1 VALUES ('325', 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
             )
             conn.execute(
-                "INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
+                "INSERT INTO products1 VALUES ('435', 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
             )
             conn.execute(
-                "INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
+                "INSERT INTO products1 VALUES ('445', 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
             )
 
             # Trying to do array_col
@@ -635,7 +635,9 @@ class TestMultipleRestriction:
                     "table_name": "products1",
                     "database_name": "orders_db",
                     "columns": ["id", "prod_name", "category"],
-                    "restrictions": [{"column": "id", "value": 324}],
+                    "restrictions": [
+                        {"column": "id", "value": "324, 224", "operation": "IN"}
+                    ],
                 },
                 {
                     "table_name": "products2",
@@ -661,41 +663,72 @@ class TestMultipleRestriction:
             ]
         }
 
-    def build_where_clause(restrictions):
-        """
-        Converts a list of column-value restrictions into a SQL WHERE clause.
+    @pytest.mark.skip("Not implemented")
+    def test_basic_query_value_inside_in_clause_using_eq(self, config, cnn):
+        verify_sql_test(
+            "SELECT id FROM products1 WHERE id = 324", config, cnn=cnn, data=[["324"]]
+        )
 
-        Args:
-            restrictions (list): A list of dictionaries with "column" and "values".
+    @pytest.mark.skip("Not implemented")
+    def test_basic_query_value_inside_in_clause_using_in(self, config, cnn):
+        verify_sql_test(
+            "SELECT id FROM products1 WHERE id IN (324)",
+            config,
+            cnn=cnn,
+            data=[["324"]],
+        )
 
-        Returns:
-            str: The dynamically generated SQL WHERE clause.
-        """
-        conditions = []
-        for restriction in restrictions:
-            column = restriction["column"]
-            values = restriction["values"]
+    @pytest.mark.skip("Not implemented")
+    def test_basic_query_value_not_inside_in_clause(self, config, cnn):
+        verify_sql_test(
+            "SELECT id FROM products1 WHERE id = 999",
+            config=config,
+            errors={
+                "Missing restriction for table: products1 column: id value: 324, 224"
+            },
+            fix="SELECT id FROM products1 WHERE (id = 999) AND (id IN (324, 224))",
+            cnn=cnn,
+            data=[],
+        )
 
-            # Convert list values into SQL IN clause
-            if isinstance(values, list):
-                values_str = ", ".join(
-                    f"'{v}'" if isinstance(v, str) else str(v) for v in values
-                )
-                conditions.append(f"{column} IN ({values_str})")
-            else:
-                conditions.append(f"{column} = '{values}'")
-
-        # Combine all conditions
-        return " AND ".join(conditions)
-
-    def test_build_query(self, config):
+    def test_query_with_in_operator(self, config):
         res = verify_sql(
-            "SELECT id, prod_name, category FROM products1 WHERE (id IN (324, 224, 323)) AND id = 324",
+            """SELECT id FROM products1 WHERE (id IN (324, 224)) AND id = '324, 224'""",
             config,
         )
         assert res["allowed"] == True, res
 
-    '''def test_build_query_new(self):
-        filters = [{"column": "status", "values": ["pending", "shipped"]}]
-        expected_query = "SELECT * FROM orders WHERE status IN ('pending', 'shipped')"
-        assert build_query(filters) == expected_query'''
+    def test_with_in_operator2(self, config):
+        res = verify_sql(
+            """SELECT id FROM products1 WHERE (id IN (324, 233)) AND id = '324, 224'""",
+            config,
+        )
+        assert res["allowed"] == True, res
+
+    def test_in_operator_with_or(self, config):
+        res = verify_sql(
+            """SELECT id FROM products1 WHERE (id IN ('324', '224') OR prod_name IN ('prod3')) AND id = '324, 224'""",
+            config,
+        )
+        assert res["allowed"] == True, res
+
+    def test_not_in_operator(self, config):
+        res = verify_sql(
+            """SELECT id FROM products1 WHERE (NOT id IN ('324', '224')) AND id = '324, 224'""",
+            config,
+        )
+        assert res["allowed"] == True, res
+
+    def test_in_operator_with_numeric_values(self, config):
+        res = verify_sql(
+            """SELECT id FROM products1 WHERE (id IN (324, 224) AND category IN ('electronics', 'furniture')) AND id = '324, 224'""",
+            config,
+        )
+        assert res["allowed"] == True, res
+
+    def test_in_operator_with_between(self, config):
+        res = verify_sql(
+            """SELECT id FROM products1 WHERE (id IN ('324', '224') AND date BETWEEN '2024-01-01' AND '2025-01-01') AND id = '324, 224'""",
+            config,
+        )
+        assert res["allowed"] == True, res
