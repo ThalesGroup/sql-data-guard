@@ -6,7 +6,7 @@ from typing import Set, Generator
 
 import pytest
 from sql_data_guard import verify_sql
-from conftest import verify_sql_test, verify_sql_test_data
+from conftest import verify_sql_test
 
 
 class TestSQLJoins:
@@ -62,47 +62,67 @@ class TestSQLJoins:
                 "INSERT INTO orders_db.products VALUES (1, 'Product1', 'CategoryA', 120)"
             )
             conn.execute(
-                "INSERT INTO orders_db.products VALUES (2, 'Product2', 'CategoryB', 80)"
+                "INSERT INTO orders_db.products VALUES (2, 'Product2', 'CategoryB', 100)"
+            )
+
+            conn.execute(
+                "INSERT INTO orders_db.products VALUES (3, 'Product3', 'CategoryC', 80)"
+            )
+            conn.execute(
+                "INSERT INTO orders_db.products VALUES (4, 'Product4', 'CategoryD', 100)"
+            )
+            conn.execute(
+                "INSERT INTO orders_db.products VALUES (5, 'Product5', 'CategoryE', 150)"
+            )
+            conn.execute(
+                "INSERT INTO orders_db.products VALUES (6, 'Product6', 'CategoryF', 200)"
             )
             conn.execute("INSERT INTO orders_db.orders VALUES (1, 1)")
             conn.execute("INSERT INTO orders_db.orders VALUES (2, 2)")
+            conn.execute("INSERT INTO orders_db.orders VALUES (3, 3)")
+            conn.execute("INSERT INTO orders_db.orders VALUES (4, 4)")
+            conn.execute("INSERT INTO orders_db.orders VALUES (5, 5)")
+            conn.execute("INSERT INTO orders_db.orders VALUES (6, 6)")
+
             yield conn
 
-    def test_inner_join_using(self, config):
+    def test_select_product_with_price_120(self, config, cnn):
+        """Test case for selecting product with price 120"""
+        verify_sql_test(
+            """
+            SELECT prod_id FROM products WHERE price = 120 AND price = 100
+            """,
+            config,
+            cnn=cnn,
+            data=[],
+        )
+
+    def test_inner_join_using(self, config, cnn):
         verify_sql_test(
             "SELECT prod_id, prod_name, order_id "
             "FROM products INNER JOIN orders USING (prod_id) WHERE price = 100",
             config,
+            cnn=cnn,
+            data=[(2, "Product2", 2), (4, "Product4", 4)],
         )
 
-    def test_inner_join_with_restriction(self, config):
-        verify_sql_test(
-            "SELECT prod_name "
-            "FROM products INNER JOIN orders USING (prod_id) WHERE price > 100 AND price = 100",
-            config,
-        )
-
-    def test_inner_join_with_price_restriction(self, config):
+    def test_inner_join_with_restriction(self, config, cnn):
+        """Test case for inner join with price restrictions"""
         sql_query = """
             SELECT prod_name
             FROM products
             INNER JOIN orders ON products.prod_id = orders.prod_id
-            WHERE price > 100 AND price = 100
-        """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is True, res
-        assert res["errors"] == set(), res  # Check that errors is an empty set
-
-    def test_left_join_with_price_restriction(self, config):
-        sql_query = """
-            SELECT prod_name
-            FROM products
-            LEFT JOIN orders ON products.prod_id = orders.prod_id
             WHERE price = 100
         """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is True, res
-        assert res["errors"] == set(), res  # Check that errors is an empty set
+        verify_sql_test(
+            sql_query,
+            config,
+            cnn=cnn,
+            data=[
+                ["Product2"],
+                ["Product4"],
+            ],
+        )
 
     def test_right_join_with_price_less_than_100(self, config):
         sql_query = """
@@ -143,16 +163,26 @@ class TestSQLJoins:
             in res["errors"]
         ), res
 
-    def test_full_outer_join_with_no_matching_rows(self, config):
+    def test_full_outer_join_with_no_matching_rows(self, config, cnn):
         sql_query = """
-               SELECT prod_name
-               FROM products
-               FULL OUTER JOIN orders ON products.prod_id = orders.prod_id
-               WHERE price = 100 AND price = 100
-           """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is True, res
-        assert res["errors"] == set(), res
+            SELECT prod_name
+            FROM products
+            FULL OUTER JOIN orders ON products.prod_id = orders.prod_id
+            WHERE price = 100
+        """
+        verify_sql_test(
+            sql_query,
+            config,
+            cnn=cnn,
+            data=[
+                {
+                    "Product2",  # Product2 has price = 100
+                },
+                {
+                    "Product4",  # Product4 has price = 100
+                },
+            ],
+        )
 
     def test_left_join_no_match(self, config):
         sql_query = """
@@ -168,16 +198,19 @@ class TestSQLJoins:
             in res["errors"]
         ), res
 
-    def test_inner_join_on_specific_prod_id(self, config):
+    def test_inner_join_on_specific_prod_id(self, config, cnn):
         sql_query = """
-               SELECT prod_name
-               FROM products
-               INNER JOIN orders ON products.prod_id = orders.prod_id
-               WHERE products.prod_id = 1 AND price = 100
-           """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is True, res
-        assert res["errors"] == set(), res
+            SELECT prod_name
+            FROM products
+            INNER JOIN orders ON products.prod_id = orders.prod_id
+            WHERE products.prod_id = 1 AND price = 100
+        """
+        verify_sql_test(
+            sql_query,
+            config,
+            cnn=cnn,
+            data=[],
+        )
 
     def test_inner_join_with_multiple_conditions(self, config):
         sql_query = """
