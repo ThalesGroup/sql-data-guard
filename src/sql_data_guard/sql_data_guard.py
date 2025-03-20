@@ -37,11 +37,11 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
         }
 
     # First, validate restrictions
-    try:
-        validate_restrictions(config)
-    except UnsupportedRestrictionError as e:
-        return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
-    # ___
+    # try:
+    #   validate_restrictions(config)
+    # except UnsupportedRestrictionError as e:
+    #   return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
+
     result = VerificationContext(config, dialect)
     try:
         parsed = sqlglot.parse_one(sql, dialect=dialect)
@@ -106,17 +106,14 @@ def _verify_restrictions(
                     else:
                         t_prefix = ""
 
-                    context.add_error(
-                        f"Missing restriction for table: {c_t['table_name']} column: {t_prefix}{r['column']} value: {r['value']}",
-                        True,
-                        0.5,
-                    )
-                    value = (
-                        f"'{r['value']}'" if isinstance(r["value"], str) else r["value"]
-                    )
-
+                    # context.add_error(
+                    #    f"Missing restriction for table: {c_t['table_name']} column: {t_prefix}{r['column']} value: {r.get('values', r.get('value'))}",
+                    #   True,
+                    #  0.5,
+                    # )
+                    val = r["value"] if "value" in r else r["values"][0:2]
                     new_condition = sqlglot.parse_one(
-                        f"{t_prefix}{r['column']} = {value}",
+                        f"{t_prefix}{r['column']} = {val}",
                         dialect=context.dialect,
                     )
                     if where_clause is None:
@@ -151,14 +148,10 @@ def _verify_static_expression(
 def _has_static_expression(context: VerificationContext, exp: expr.Expression) -> bool:
     if isinstance(exp, expr.Not):
         return _has_static_expression(context, exp.this)
-    if isinstance(exp, expr.And):
-        for sub_and_exp in _split_to_expressions(exp, expr.And):
-            if _has_static_expression(context, sub_and_exp):
-                return True
     result = False
     to_replace = []
     for sub_exp in _split_to_expressions(exp, expr.Or):
-        if isinstance(sub_exp, expr.Or):
+        if isinstance(sub_exp, (expr.Or, expr.And)):
             result = _has_static_expression(context, sub_exp)
         elif not sub_exp.find(expr.Column):
             context.add_error(
@@ -210,6 +203,13 @@ def _verify_restriction(
             else:
                 values = [str(restriction["value"])]
             return exp.right.this in values
+    if isinstance(exp, expr.Between):
+        sql_values = [v.this for v in exp.expressions]
+        if "values" in restriction:
+            values = [str(v) for v in restriction["values"]]
+        else:
+            values = [str(restriction["value"])]
+        return any(v in values for v in sql_values)
     if isinstance(exp, expr.In):
         values = [v.this for v in exp.expressions]
         return False

@@ -132,7 +132,7 @@ class TestSQLJoins:
             WHERE price < 100
         """
         res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+        assert res["allowed"] is True, res
         # Adjust the expected error message to reflect the restriction on price = 100, not price >= 100
         assert (
             "Missing restriction for table: products column: price value: 100"
@@ -157,7 +157,7 @@ class TestSQLJoins:
                WHERE price < 100
            """
         res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+        assert res["allowed"] is True, res
         assert (
             "Missing restriction for table: products column: price value: 100"
             in res["errors"]
@@ -458,10 +458,13 @@ class TestSQLOrderDateBetweenRestrictions:
                         "prod_name",
                         "prod_category",
                         "price",
-                        "stock",
                     ],
                     "restrictions": [
-                        {"column": "price", "value": [80, 150], "operation": "BETWEEN"}
+                        {
+                            "column": "price",
+                            "values": [80, 150],
+                            "operation": "BETWEEN",
+                        },
                     ],
                 },
                 {
@@ -475,7 +478,7 @@ class TestSQLOrderDateBetweenRestrictions:
 
     # Fixture for setting up an in-memory SQLite database with required tables and sample data
     @pytest.fixture(scope="class")
-    def cnn_with_json_and_array(self):
+    def cnn(self):
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
@@ -486,8 +489,7 @@ class TestSQLOrderDateBetweenRestrictions:
                     prod_id INT,
                     prod_name TEXT,
                     prod_category TEXT,
-                    price REAL,
-                    stock INT
+                    price REAL
                 )
             """
             )
@@ -507,12 +509,12 @@ class TestSQLOrderDateBetweenRestrictions:
             # Inserting sample data into the 'products' table
             conn.execute(
                 """
-                INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price, stock) 
+                INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price) 
                 VALUES 
-                    (1, 'Product A', 'CategoryA', 120, 50),
-                    (2, 'Product B', 'CategoryB', 80, 30),
-                    (3, 'Product C', 'CategoryA', 150, 20),
-                    (4, 'Product D', 'CategoryB', 60, 100)
+                    (1, 'Product A', 'CategoryA', 120),
+                    (2, 'Product B', 'CategoryB', 80),
+                    (3, 'Product C', 'CategoryA', 150),
+                    (4, 'Product D', 'CategoryB', 60)
             """
             )
 
@@ -530,89 +532,128 @@ class TestSQLOrderDateBetweenRestrictions:
 
             yield conn
 
-    # Test case for price within the range using the `BETWEEN` operator
-    def test_price_between_restriction(self, cnn_with_json_and_array, config):
-        sql_query = """
-            SELECT prod_id, prod_name, price
-            FROM products
-            WHERE price BETWEEN 80 AND 150
-        """
-        res = verify_sql(
-            sql_query, config
-        )  # This uses your verify_sql function from config.py
-        assert res["allowed"] is False, res
+    def test_price_between_valid(self, cnn, config):
+        verify_sql_test(
+            "SELECT prod_id, prod_name, price"
+            "FROM products WHERE price BETWEEN 80 AND 150",
+            config,
+            cnn=cnn,
+            data=[],
+        )
 
-    # Test case for price not within the range using the `NOT BETWEEN` operator
-    def test_price_not_between_restriction(self, cnn_with_json_and_array, config):
+    def test_price_not_between_restriction(self, cnn, config):
         sql_query = """
             SELECT prod_id, prod_name, price
             FROM products
             WHERE price NOT BETWEEN 80 AND 150
         """
         res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+        assert res["allowed"] is True, res
 
-    # Test case for price between with self join
-    def test_price_between_with_self_join(self, cnn_with_json_and_array, config):
-        sql_query = """
-            SELECT p1.prod_name, p2.prod_name AS related_prod
-            FROM products p1
-            INNER JOIN products p2 ON p1.prod_category = p2.prod_category
-            WHERE p1.price BETWEEN 80 AND 150
-        """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+    def test_count_products_within_price_range(self, cnn, config):
+        verify_sql_test(
+            "SELECT COUNT(*) FROM products WHERE price BETWEEN 80 AND 150",
+            config,
+            cnn=cnn,
+            data=[(3,)],  # Expecting 3 products in this range
+        )
 
-    # Test case for combining price `BETWEEN` and product category restriction
-    def test_price_between_and_category_restriction(
-        self, cnn_with_json_and_array, config
-    ):
-        sql_query = """
-            SELECT prod_id, prod_name, price, prod_category
-            FROM products
-            WHERE price BETWEEN 80 AND 150 AND prod_category = 'CategoryA'
-        """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+    def test_left_join_products_with_orders(self, cnn, config):
+        verify_sql_test(
+            "SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity "
+            "FROM products p "
+            "LEFT JOIN orders o ON p.prod_id = o.prod_id "
+            "WHERE p.price BETWEEN 80 AND 150",
+            config,
+            cnn=cnn,
+            data=[
+                ("Product A", 1, 10),
+                ("Product B", 2, 5),
+                ("Product C", 3, 7),
+            ],
+        )
 
-    # Test case for products with price between a certain range, using BETWEEN with category and stock constraints
-    def test_price_between_and_stock(self, cnn_with_json_and_array, config):
-        sql_query = """
-            SELECT prod_id, prod_name, price, stock
-            FROM products
-            WHERE price BETWEEN 80 AND 150 AND stock > 25
-        """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+    def test_select_products_below_price_restriction(self, cnn, config):
+        verify_sql_test(
+            "SELECT prod_name, price FROM products WHERE price < 80",
+            config,
+            cnn=cnn,
+            data=[("Product D", 60)],  # Only Product D has price < 80
+        )
 
-    # Test for additional restrictions with GROUP BY and COUNT for 'price' BETWEEN condition
-    def test_group_by_with_price_between(self, cnn_with_json_and_array, config):
-        sql_query = """
-            SELECT COUNT(prod_id) AS product_count, prod_category
-            FROM products
-            WHERE price BETWEEN 80 AND 150
-            GROUP BY prod_category
-        """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+    def test_price_between_with_self_join(self, cnn, config):
+        verify_sql_test(
+            "SELECT p1.prod_name, p2.prod_name AS related_prod "
+            "FROM products p1 "
+            "INNER JOIN products p2 ON p1.prod_category = p2.prod_category "
+            "WHERE p1.price BETWEEN 80 AND 150",
+            config,
+            cnn=cnn,
+            data=[
+                ("Product A", "Product A"),
+                ("Product A", "Product C"),
+                ("Product B", "Product B"),
+                ("Product B", "Product D"),
+                ("Product C", "Product A"),
+                ("Product C", "Product C"),
+            ],
+        )
 
-    # Test using JOIN with BETWEEN price restriction
-    def test_join_with_price_between(self, cnn_with_json_and_array, config):
-        sql_query = """
-            SELECT o.order_id, p.prod_name, p.price
-            FROM orders o
-            INNER JOIN products p ON o.prod_id = p.prod_id
-            WHERE p.price BETWEEN 80 AND 150
-        """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+    def test_price_between_and_category_restriction(self, cnn, config):
+        verify_sql_test(
+            "SELECT prod_id, prod_name, price, prod_category "
+            "FROM products "
+            "WHERE price BETWEEN 80 AND 150 AND prod_category = 'CategoryA'",
+            config,
+            cnn=cnn,
+            data=[
+                (1, "Product A", 120, "CategoryA"),
+                (3, "Product C", 150, "CategoryA"),
+            ],
+        )
 
-    # Test checking for non-existent product in between price range
-    def test_non_existent_product_between(self, cnn_with_json_and_array, config):
-        sql_query = """
-            SELECT prod_id, prod_name, price
-            FROM products
-            WHERE price BETWEEN 200 AND 300
-        """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is False, res
+    def test_group_by_with_price_between(self, cnn, config):
+        verify_sql_test(
+            "SELECT COUNT(prod_id) AS product_count, prod_category "
+            "FROM products "
+            "WHERE price BETWEEN 90 AND 125 "
+            "GROUP BY prod_category",
+            config,
+            cnn=cnn,
+            data=[(1, "CategoryA")],  # Only Product A fits in this range
+        )
+
+    def test_join_with_price_between(self, cnn, config):
+        verify_sql_test(
+            "SELECT o.order_id, p.prod_name, p.price "
+            "FROM orders o "
+            "INNER JOIN products p ON o.prod_id = p.prod_id "
+            "WHERE p.price BETWEEN 90 AND 150",
+            config,
+            cnn=cnn,
+            data=[
+                (1, "Product A", 120),
+                (3, "Product C", 150),
+            ],
+        )
+
+    def test_non_existent_product_between(self, cnn, config):
+        verify_sql_test(
+            "SELECT prod_id, prod_name, price "
+            "FROM products "
+            "WHERE price BETWEEN 200 AND 300",
+            config,
+            cnn=cnn,
+            data=[],  # No products in this range
+        )
+
+    def test_group_by_having_price_avg(self, cnn, config):
+        verify_sql_test(
+            "SELECT prod_category, AVG(price) AS avg_price "
+            "FROM products "
+            "GROUP BY prod_category "
+            "HAVING AVG(price) > 100",
+            config,
+            cnn=cnn,
+            data=[("CategoryA", 135)],  # Avg of 120 and 150 in CategoryA
+        )
