@@ -39,11 +39,7 @@ def verify_restrictions(
                         True,
                         0.5,
                     )
-                    val = r["value"] if "value" in r else r["values"][0:2]
-                    new_condition = sqlglot.parse_one(
-                        f"{t_prefix}{r['column']} = {val}",
-                        dialect=context.dialect,
-                    )
+                    new_condition = _create_new_condition(context, r, t_prefix)
                     if where_clause is None:
                         where_clause = expr.Where(this=new_condition)
                         select_statement.set("where", where_clause)
@@ -56,6 +52,37 @@ def verify_restrictions(
                                 )
                             )
                         )
+
+
+def _create_new_condition(
+    context: VerificationContext, restriction: dict, table_prefix: str
+) -> expr.Expression:
+    """
+    Used to create a restriction condition for a given restriction.
+
+    Args:
+        context: verification context
+        restriction: restriction to create condition for
+        table_prefix: table prefix to use in the condition
+
+    Returns: condition expression
+
+    """
+    if restriction.get("operation") == "BETWEEN":
+        operator = "BETWEEN"
+        operand = f"{restriction["values"][0]} AND {restriction["values"][1]}"
+    else:
+        operator = "="
+        operand = (
+            restriction["value"]
+            if "value" in restriction
+            else str(restriction["values"])[1:-1]
+        )
+    new_condition = sqlglot.parse_one(
+        f"{table_prefix}{restriction['column']} {operator} {operand}",
+        dialect=context.dialect,
+    )
+    return new_condition
 
 
 def _verify_restriction(
@@ -88,19 +115,21 @@ def _verify_restriction(
         if isinstance(exp.right, expr.Boolean):
             return exp.right.this == restriction["value"]
         else:
-            if "values" in restriction:
-                values = [str(v) for v in restriction["values"]]
-            else:
-                values = [str(restriction["value"])]
+            values = _get_restriction_values(restriction)
             return exp.right.this in values
     if isinstance(exp, expr.Between):
         sql_values = [v.this for v in exp.expressions]
-        if "values" in restriction:
-            values = [str(v) for v in restriction["values"]]
-        else:
-            values = [str(restriction["value"])]
+        values = _get_restriction_values(restriction)
         return any(v in values for v in sql_values)
     if isinstance(exp, expr.In):
         values = [v.this for v in exp.expressions]
         return False
     return False
+
+
+def _get_restriction_values(restriction: dict) -> List[str]:
+    if "values" in restriction:
+        values = [str(v) for v in restriction["values"]]
+    else:
+        values = [str(restriction["value"])]
+    return values

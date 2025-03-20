@@ -547,8 +547,16 @@ class TestSQLOrderDateBetweenRestrictions:
             FROM products
             WHERE price NOT BETWEEN 80 AND 150
         """
-        res = verify_sql(sql_query, config)
-        assert res["allowed"] is True, res
+        verify_sql_test(
+            sql_query,
+            config,
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT prod_id, prod_name, price FROM products WHERE (NOT price BETWEEN 80 AND 150) AND price BETWEEN 80 AND 150",
+            cnn=cnn,
+            data=[],
+        )
 
     def test_count_products_within_price_range(self, cnn, config):
         verify_sql_test(
