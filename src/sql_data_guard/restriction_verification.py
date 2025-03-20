@@ -70,11 +70,11 @@ def _create_new_condition(
     """
     if restriction.get("operation") == "BETWEEN":
         operator = "BETWEEN"
-        operand = f"{restriction["values"][0]} AND {restriction["values"][1]}"
+        operand = f"{_format_value(restriction["values"][0])} AND {_format_value(restriction["values"][1])}"
     else:
         operator = "="
         operand = (
-            restriction["value"]
+            _format_value(restriction["value"])
             if "value" in restriction
             else str(restriction["values"])[1:-1]
         )
@@ -83,6 +83,13 @@ def _create_new_condition(
         dialect=context.dialect,
     )
     return new_condition
+
+
+def _format_value(value):
+    if isinstance(value, str):
+        return f"'{value}'"
+    else:
+        return value
 
 
 def _verify_restriction(
