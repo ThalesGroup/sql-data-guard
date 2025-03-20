@@ -1,12 +1,14 @@
 import logging
-from typing import List, Generator, Type
+from typing import List
 
 import sqlglot
 import sqlglot.expressions as expr
 from sqlglot.optimizer.simplify import simplify
 
-from .verification_context import VerificationContext
 from .restriction_validation import validate_restrictions, UnsupportedRestrictionError
+from .restriction_verification import verify_restrictions
+from .verification_context import VerificationContext
+from .verification_utils import split_to_expressions, find_direct
 
 
 def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
@@ -37,10 +39,10 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
         }
 
     # First, validate restrictions
-    # try:
-    #   validate_restrictions(config)
-    # except UnsupportedRestrictionError as e:
-    #   return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
+    try:
+        validate_restrictions(config)
+    except UnsupportedRestrictionError as e:
+        return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
 
     result = VerificationContext(config, dialect)
     try:
@@ -76,58 +78,7 @@ def _verify_where_clause(
     from_tables: List[expr.Table],
 ):
     _verify_static_expression(select_statement, context)
-    _verify_restrictions(select_statement, context, from_tables)
-
-
-def _verify_restrictions(
-    select_statement: expr.Query,
-    context: VerificationContext,
-    from_tables: List[expr.Table],
-):
-    where_clause = select_statement.find(expr.Where)
-    if where_clause is None:
-        where_clause = select_statement.find(expr.Where)
-        and_exps = []
-    else:
-        and_exps = list(_split_to_expressions(where_clause.this, expr.And))
-    for c_t in context.config["tables"]:
-        for from_t in [t for t in from_tables if t.name == c_t["table_name"]]:
-            for idx, r in enumerate(c_t.get("restrictions", [])):
-                found = False
-                for sub_exp in and_exps:
-                    if _verify_restriction(r, from_t, sub_exp):
-                        found = True
-                        break
-                if not found:
-                    if from_t.alias:
-                        t_prefix = f"{from_t.alias}."
-                    elif len([t for t in from_tables if t.name == from_t.name]) > 1:
-                        t_prefix = f"{from_t.name}."
-                    else:
-                        t_prefix = ""
-
-                    # context.add_error(
-                    #    f"Missing restriction for table: {c_t['table_name']} column: {t_prefix}{r['column']} value: {r.get('values', r.get('value'))}",
-                    #   True,
-                    #  0.5,
-                    # )
-                    val = r["value"] if "value" in r else r["values"][0:2]
-                    new_condition = sqlglot.parse_one(
-                        f"{t_prefix}{r['column']} = {val}",
-                        dialect=context.dialect,
-                    )
-                    if where_clause is None:
-                        where_clause = expr.Where(this=new_condition)
-                        select_statement.set("where", where_clause)
-                    else:
-                        where_clause = where_clause.replace(
-                            expr.Where(
-                                this=expr.And(
-                                    this=expr.paren(where_clause.this),
-                                    expression=new_condition,
-                                )
-                            )
-                        )
+    verify_restrictions(select_statement, context, from_tables)
 
 
 def _verify_static_expression(
@@ -136,7 +87,7 @@ def _verify_static_expression(
     has_static_exp = False
     where_clause = select_statement.find(expr.Where)
     if where_clause:
-        and_exps = list(_split_to_expressions(where_clause.this, expr.And))
+        and_exps = list(split_to_expressions(where_clause.this, expr.And))
         for e in and_exps:
             if _has_static_expression(context, e):
                 has_static_exp = True
@@ -150,7 +101,7 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
         return _has_static_expression(context, exp.this)
     result = False
     to_replace = []
-    for sub_exp in _split_to_expressions(exp, expr.Or):
+    for sub_exp in split_to_expressions(exp, expr.Or):
         if isinstance(sub_exp, (expr.Or, expr.And)):
             result = _has_static_expression(context, sub_exp)
         elif not sub_exp.find(expr.Column):
@@ -166,54 +117,6 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
     for e in to_replace:
         e.replace(expr.Boolean(this=False))
     return result
-
-
-def _verify_restriction(
-    restriction: dict, from_table: expr.Table, exp: expr.Expression
-) -> bool:
-    """
-    Verifies if a given restriction is satisfied within an SQL expression.
-
-    Args:
-        restriction (dict): The restriction to verify, containing 'column' and 'value' keys.
-        from_table (Table): The table reference to check the restriction against.
-        exp (list): The SQL expression to check against the restriction.
-
-    Returns:
-        bool: True if the restriction is satisfied, False otherwise.
-    """
-    if isinstance(exp, expr.Not):
-        return False
-    if isinstance(exp, expr.Paren):
-        return _verify_restriction(restriction, from_table, exp.this)
-    if not isinstance(exp.this, expr.Column):
-        return False
-    if not exp.this.name == restriction["column"]:
-        return False
-    if exp.this.table and from_table.alias and exp.this.table != from_table.alias:
-        return False
-    if exp.this.table and not from_table.alias and exp.this.table != from_table.name:
-        return False
-    if isinstance(exp, expr.EQ) and isinstance(exp.right, expr.Condition):
-        if isinstance(exp.right, expr.Boolean):
-            return exp.right.this == restriction["value"]
-        else:
-            if "values" in restriction:
-                values = [str(v) for v in restriction["values"]]
-            else:
-                values = [str(restriction["value"])]
-            return exp.right.this in values
-    if isinstance(exp, expr.Between):
-        sql_values = [v.this for v in exp.expressions]
-        if "values" in restriction:
-            values = [str(v) for v in restriction["values"]]
-        else:
-            values = [str(restriction["value"])]
-        return any(v in values for v in sql_values)
-    if isinstance(exp, expr.In):
-        values = [v.this for v in exp.expressions]
-        return False
-    return False
 
 
 def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
@@ -343,39 +246,24 @@ def _get_from_clause_tables(
     join_clause = select_clause.find(expr.Join)
     for clause in [from_clause, join_clause]:
         if clause:
-            for t in _find_direct(clause, expr.Table):
+            for t in find_direct(clause, expr.Table):
                 if isinstance(t, expr.Table):
                     result.append(t)
-            for l in _find_direct(clause, expr.Subquery):
+            for l in find_direct(clause, expr.Subquery):
                 _add_table_alias(l, context)
                 _verify_query_statement(l.this, context)
     if join_clause:
-        for l in _find_direct(join_clause, expr.Lateral):
+        for l in find_direct(join_clause, expr.Lateral):
             _add_table_alias(l, context)
             _verify_query_statement(l.this.find(expr.Select), context)
-        for u in _find_direct(join_clause, expr.Unnest):
+        for u in find_direct(join_clause, expr.Unnest):
             _add_table_alias(u, context)
     return result
 
 
 def _add_table_alias(exp: expr.Expression, context: VerificationContext):
-    for table_alias in _find_direct(exp, expr.TableAlias):
+    for table_alias in find_direct(exp, expr.TableAlias):
         if isinstance(table_alias, expr.TableAlias):
             context.dynamic_tables[table_alias.alias_or_name] = {
                 col.alias_or_name for col in table_alias.columns
             }
-
-
-def _split_to_expressions(
-    exp: expr.Expression, exp_type: Type[expr.Expression]
-) -> Generator[expr.Expression, None, None]:
-    if isinstance(exp, exp_type):
-        yield from exp.flatten()
-    else:
-        yield exp
-
-
-def _find_direct(exp: expr.Expression, exp_type: Type[expr.Expression]):
-    for child in exp.args.values():
-        if isinstance(child, exp_type):
-            yield child
