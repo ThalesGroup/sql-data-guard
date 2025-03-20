@@ -106,7 +106,7 @@ class TestSingleTable:
             data=test.get("data"),
         )
 
-    @pytest.mark.parametrize("test_name", ["no_from_sub_select_lateral"])
+    @pytest.mark.parametrize("test_name", ["not_op"])
     def test_by_name(self, test_name, config, cnn, tests):
         """Test by name. Use it to run a single test from tests/ai_tests by name"""
         test = tests[test_name]

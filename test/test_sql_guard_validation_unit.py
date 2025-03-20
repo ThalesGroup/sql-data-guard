@@ -25,22 +25,34 @@ def test_valid_restrictions():
         pytest.fail(f"Unexpected error: {e}")
 
 
-def test_invalid_restriction():
+def test_valid_between_restriction():
     config = {
         "tables": [
             {
                 "table_name": "products",
                 "columns": ["price"],
                 "restrictions": [
-                    {"column": "price", "value": [80, 150], "operation": "BETWEEN"},
+                    {"column": "price", "values": [80, 150], "operation": "BETWEEN"},
                 ],
             }
         ]
     }
-    with pytest.raises(
-        UnsupportedRestrictionError,
-        # match="Invalid restriction: 'operation=BETWEEN' is not supported.",
-    ):
+    validate_restrictions(config)
+
+
+def test_invalid_between_restriction():
+    config = {
+        "tables": [
+            {
+                "table_name": "products",
+                "columns": ["price"],
+                "restrictions": [
+                    {"column": "price", "values": [150, 80], "operation": "BETWEEN"},
+                ],
+            }
+        ]
+    }
+    with pytest.raises(ValueError):
         validate_restrictions(config)
 
 
@@ -105,7 +117,7 @@ def test_unsupported_restriction_operation():
                 "table_name": "products",
                 "columns": ["price"],  # Add columns key here
                 "restrictions": [
-                    {"column": "price", "value": 100, "operation": "BETWEEN"},
+                    {"column": "price", "value": 100, "operation": "NotSupported"},
                 ],
             }
         ]
@@ -113,7 +125,7 @@ def test_unsupported_restriction_operation():
 
     with pytest.raises(
         UnsupportedRestrictionError,
-        match="Invalid restriction: 'operation=BETWEEN' is not supported.",
+        match="Invalid restriction: 'operation=NotSupported' is not supported.",
     ):
         validate_restrictions(config)
 
