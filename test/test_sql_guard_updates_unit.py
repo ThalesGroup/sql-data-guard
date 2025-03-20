@@ -8,56 +8,92 @@ from sql_data_guard import verify_sql
 from conftest import verify_sql_test
 
 
-class TestInvalidQueries:
+@pytest.fixture(scope="module")
+def cnn():
+    with sqlite3.connect(":memory:") as conn:
+        conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
-    @pytest.fixture(scope="class")
-    def cnn(self):
-        with sqlite3.connect(":memory:") as conn:
-            conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
-
-            # Creating products table
-            conn.execute(
-                """
+        # Creating products table
+        conn.execute(
+            """
             CREATE TABLE orders_db.products1 (
-                id INT,
+                id TEXT,
                 prod_name TEXT,
                 deliver TEXT,
                 access TEXT,
                 date TEXT,
                 cust_id TEXT
             )"""
-            )
+        )
 
-            # Insert values into products1 table
-            conn.execute(
-                "INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
-            )
+        # Insert values into products1 table
+        conn.execute(
+            "INSERT INTO products1 VALUES ('324', 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
+        )
+        conn.execute(
+            "INSERT INTO products1 VALUES ('325', 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
+        )
+        conn.execute(
+            "INSERT INTO products1 VALUES ('435', 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
+        )
+        conn.execute(
+            "INSERT INTO products1 VALUES ('445', 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
+        )
 
-            # Creating customers table
-            conn.execute(
-                """
+        # Trying to do array_col
+        conn.execute(
+            """
+            CREATE TABLE orders_db.products2 (
+                id INT,
+                prod_name TEXT,
+                deliver TEXT,
+                access TEXT,
+                date TEXT,
+                cust_id TEXT,
+                category TEXT  -- JSON formatted array column
+            )"""
+        )
+
+        # Insert values into products1 table (JSON formatted array)
+        conn.execute(
+            "INSERT INTO products2 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1', '["
+            "electronics"
+            ", "
+            "fashion"
+            "]')"
+        )
+        conn.execute(
+            "INSERT INTO products2 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2', '["
+            "books"
+            "]')"
+        )
+        conn.execute(
+            "INSERT INTO products2 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3', '["
+            "sports"
+            ", "
+            "toys"
+            "]')"
+        )
+
+        # Creating customers table
+        conn.execute(
+            """
             CREATE TABLE orders_db.customers (
                 id INT,
                 cust_id TEXT,
                 cust_name TEXT,
                 prod_name TEXT)"""
-            )
+        )
 
-            # Insert values into customers table
-            conn.execute("INSERT INTO customers VALUES (324, 'c1', 'cust1', 'prod1')")
-            conn.execute("INSERT INTO customers VALUES (435, 'c2', 'cust2', 'prod2')")
-            conn.execute("INSERT INTO customers VALUES (445, 'c3', 'cust3', 'prod3')")
+        # Insert values into customers table
+        conn.execute("INSERT INTO customers VALUES (324, 'c1', 'cust1', 'prod1')")
+        conn.execute("INSERT INTO customers VALUES (435, 'c2', 'cust2', 'prod2')")
+        conn.execute("INSERT INTO customers VALUES (445, 'c3', 'cust3', 'prod3')")
 
-            yield conn
+        yield conn
+
+
+class TestInvalidQueries:
 
     @pytest.fixture(scope="class")
     def config(self) -> dict:
@@ -179,12 +215,12 @@ class TestInvalidQueries:
         sql = "SELECT id, prod_name FROM products1 WHERE id = 324"
         cursor.execute(sql)
         result = cursor.fetchall()
-        expected = [(324, "prod1"), (324, "prod2")]
+        expected = [("324", "prod1")]
         assert result == expected
         result = verify_sql(sql, config)
         assert not result["allowed"], result
         cursor.execute(result["fixed"])
-        assert cursor.fetchall() == [(324, "prod1")]
+        assert cursor.fetchall() == [("324", "prod1")]
 
     def test_using_cnn(self, config, cnn):
         cursor = cnn.cursor()
@@ -193,12 +229,12 @@ class TestInvalidQueries:
         )
         cursor.execute(sql)
         res = cursor.fetchall()
-        expected = [(324, "prod1")]
+        expected = [("324", "prod1")]
         assert res == expected
         res = verify_sql(sql, config)
         assert not res["allowed"], res
         cursor.execute(res["fixed"])
-        assert cursor.fetchall() == [(324, "prod1")]
+        assert cursor.fetchall() == [("324", "prod1")]
 
     def test_update_value(self, config):
         res = verify_sql("Update products1 set id = 224 where id = 324", config)
@@ -207,90 +243,6 @@ class TestInvalidQueries:
 
 
 class TestJoins:
-
-    @pytest.fixture(scope="class")
-    def cnn(self):
-        with sqlite3.connect(":memory:") as conn:
-            conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
-
-            # Creating products table
-            conn.execute(
-                """
-                CREATE TABLE orders_db.products1 (
-                    id INT,
-                    prod_name TEXT,
-                    deliver TEXT,
-                    access TEXT,
-                    date TEXT,
-                    cust_id TEXT
-                )"""
-            )
-
-            # Insert values into products1 table
-            conn.execute(
-                "INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES (324, 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
-            )
-
-            # Trying to do array_col
-            conn.execute(
-                """
-                CREATE TABLE orders_db.products2 (
-                    id INT,
-                    prod_name TEXT,
-                    deliver TEXT,
-                    access TEXT,
-                    date TEXT,
-                    cust_id TEXT,
-                    category TEXT  -- JSON formatted array column
-                )"""
-            )
-
-            # Insert values into products1 table (JSON formatted array)
-            conn.execute(
-                "INSERT INTO products2 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1', '["
-                "electronics"
-                ", "
-                "fashion"
-                "]')"
-            )
-            conn.execute(
-                "INSERT INTO products2 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2', '["
-                "books"
-                "]')"
-            )
-            conn.execute(
-                "INSERT INTO products2 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3', '["
-                "sports"
-                ", "
-                "toys"
-                "]')"
-            )
-
-            # Creating customers table
-            conn.execute(
-                """
-                CREATE TABLE orders_db.customers (
-                    id INT,
-                    cust_id TEXT,
-                    cust_name TEXT,
-                    prod_name TEXT)"""
-            )
-
-            # Insert values into customers table
-            conn.execute("INSERT INTO customers VALUES (324, 'c1', 'cust1', 'prod1')")
-            conn.execute("INSERT INTO customers VALUES (435, 'c2', 'cust2', 'prod2')")
-            conn.execute("INSERT INTO customers VALUES (445, 'c3', 'cust3', 'prod3')")
-
-            yield conn
 
     @pytest.fixture(scope="class")
     def config(self) -> dict:
@@ -544,90 +496,6 @@ class TestJoins:
 class TestMultipleRestriction:
 
     @pytest.fixture(scope="class")
-    def cnn(self):
-        with sqlite3.connect(":memory:") as conn:
-            conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
-
-            # Creating products table
-            conn.execute(
-                """
-                CREATE TABLE orders_db.products1 (
-                    id TEXT,
-                    prod_name TEXT,
-                    deliver TEXT,
-                    access TEXT,
-                    date TEXT,
-                    cust_id TEXT
-                )"""
-            )
-
-            # Insert values into products1 table
-            conn.execute(
-                "INSERT INTO products1 VALUES ('324', 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES ('325', 'prod2', 'delivered', 'pending', '27-02-2025', 'c1')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES ('435', 'prod2', 'delayed', 'pending', '02-03-2025', 'c2')"
-            )
-            conn.execute(
-                "INSERT INTO products1 VALUES ('445', 'prod3', 'shipped', 'granted', '28-02-2025', 'c3')"
-            )
-
-            # Trying to do array_col
-            conn.execute(
-                """
-                CREATE TABLE orders_db.products2 (
-                    id INT,
-                    prod_name TEXT,
-                    deliver TEXT,
-                    access TEXT,
-                    date TEXT,
-                    cust_id TEXT,
-                    category TEXT  -- JSON formatted array column
-                )"""
-            )
-
-            # Insert values into products1 table (JSON formatted array)
-            conn.execute(
-                "INSERT INTO products2 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1', '["
-                "electronics"
-                ", "
-                "fashion"
-                "]')"
-            )
-            conn.execute(
-                "INSERT INTO products2 VALUES (435, 'prod2', 'delayed', 'pending', '02-03-2025', 'c2', '["
-                "books"
-                "]')"
-            )
-            conn.execute(
-                "INSERT INTO products2 VALUES (445, 'prod3', 'shipped', 'granted', '28-02-2025', 'c3', '["
-                "sports"
-                ", "
-                "toys"
-                "]')"
-            )
-
-            # Creating customers table
-            conn.execute(
-                """
-                CREATE TABLE orders_db.customers (
-                    id INT,
-                    cust_id TEXT,
-                    cust_name TEXT,
-                    prod_name TEXT)"""
-            )
-
-            # Insert values into customers table
-            conn.execute("INSERT INTO customers VALUES (324, 'c1', 'cust1', 'prod1')")
-            conn.execute("INSERT INTO customers VALUES (435, 'c2', 'cust2', 'prod2')")
-            conn.execute("INSERT INTO customers VALUES (445, 'c3', 'cust3', 'prod3')")
-
-            yield conn
-
-    @pytest.fixture(scope="class")
     def config(self) -> dict:
         return {
             "tables": [
@@ -635,9 +503,7 @@ class TestMultipleRestriction:
                     "table_name": "products1",
                     "database_name": "orders_db",
                     "columns": ["id", "prod_name", "category"],
-                    "restrictions": [
-                        {"column": "id", "value": "324, 224", "operation": "IN"}
-                    ],
+                    "restrictions": [{"column": "id", "values": [324, 224]}],
                 },
                 {
                     "table_name": "products2",
@@ -663,13 +529,14 @@ class TestMultipleRestriction:
             ]
         }
 
-    @pytest.mark.skip("Not implemented")
     def test_basic_query_value_inside_in_clause_using_eq(self, config, cnn):
         verify_sql_test(
-            "SELECT id FROM products1 WHERE id = 324", config, cnn=cnn, data=[["324"]]
+            "SELECT id FROM products1 WHERE id = 324 and id IN (324, 224)",
+            config,
+            cnn=cnn,
+            data=[["324"]],
         )
 
-    @pytest.mark.skip("Not implemented")
     def test_basic_query_value_inside_in_clause_using_in(self, config, cnn):
         verify_sql_test(
             "SELECT id FROM products1 WHERE id IN (324)",
@@ -678,57 +545,58 @@ class TestMultipleRestriction:
             data=[["324"]],
         )
 
-    @pytest.mark.skip("Not implemented")
     def test_basic_query_value_not_inside_in_clause(self, config, cnn):
         verify_sql_test(
             "SELECT id FROM products1 WHERE id = 999",
             config=config,
-            errors={
-                "Missing restriction for table: products1 column: id value: 324, 224"
-            },
-            fix="SELECT id FROM products1 WHERE (id = 999) AND (id IN (324, 224))",
             cnn=cnn,
             data=[],
         )
 
-    def test_query_with_in_operator(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN (324, 224)) AND id = '324, 224'""",
+    def test_query_with_in_operator(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (id IN (324, 224))""",
             config,
+            cnn=cnn,
+            data=[["324"]],
         )
-        assert res["allowed"] == True, res
 
-    def test_with_in_operator2(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN (324, 233)) AND id = '324, 224'""",
+    def test_with_in_operator2(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (id IN (324, 233)) """,
             config,
+            cnn=cnn,
+            data=[["324"]],
         )
-        assert res["allowed"] == True, res
 
-    def test_in_operator_with_or(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN ('324', '224') OR prod_name IN ('prod3')) AND id = '324, 224'""",
+    def test_in_operator_with_or(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (id IN ('324', '224') OR prod_name IN ('prod3'))""",
             config,
+            cnn=cnn,
+            data=[["324"], ["445"]],
         )
-        assert res["allowed"] == True, res
 
-    def test_not_in_operator(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (NOT id IN ('324', '224')) AND id = '324, 224'""",
+    def test_not_in_operator(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (NOT id IN ('324', '224'))""",
             config,
+            cnn=cnn,
+            data=[["325"], ["435"], ["445"]],
         )
-        assert res["allowed"] == True, res
 
-    def test_in_operator_with_numeric_values(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN (324, 224) AND category IN ('electronics', 'furniture')) AND id = '324, 224'""",
+    def test_in_operator_with_numeric_values(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products2 WHERE (id IN (324, 224) AND category IN ('electronics', 'furniture'))""",
             config,
+            cnn=cnn,
+            data=[],
         )
-        assert res["allowed"] == True, res
 
-    def test_in_operator_with_between(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN ('324', '224') AND date BETWEEN '2024-01-01' AND '2025-01-01') AND id = '324, 224'""",
+    def test_in_operator_with_between(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (id IN ('324', '224') AND date BETWEEN '2024-01-01' AND '2025-01-01')""",
             config,
+            cnn=cnn,
+            data=[],
         )
-        assert res["allowed"] == True, res
