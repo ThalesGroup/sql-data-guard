@@ -54,7 +54,7 @@ def validate_restrictions(config: dict):
                     and values[0] < values[1]
                 ):
                     raise ValueError(
-                        f"Invalid 'BETWEEN' format. Expected list of two numeric values where min < max."
+                        f"Invalid 'BETWEEN' format. Expected list of two numeric values where min < max. Received: {values}"
                     )
             elif operation == ">=":
                 # You may want to ensure the value provided is numeric for >=
@@ -63,33 +63,6 @@ def validate_restrictions(config: dict):
                     raise ValueError(
                         f"Invalid restriction value type for column '{restriction['column']}' in table '{table['table_name']}'. Expected a numeric value."
                     )
-
-            elif operation == "IN":
-
-                column = restriction.get("column")  # Ensure 'column' is extracted
-
-                values = restriction.get("values") or restriction.get("value")
-
-                if isinstance(values, str):  # Convert comma-separated string to a list
-
-                    values = [v.strip() for v in values.split(",")]
-
-                if not (
-                    isinstance(values, list) and all(isinstance(v, str) for v in values)
-                ):
-                    raise ValueError(
-                        f"Invalid restriction value for 'IN' operation. Expected a comma-separated string of values."
-                    )
-
-                # Convert list into proper SQL format
-
-                values_str = ", ".join(
-                    f"'{v}'" for v in values
-                )  # Add quotes for SQL syntax
-
-                sql_condition = (
-                    f"{column} IN ({values_str})"  # Now column is properly defined
-                )
 
             elif operation and operation.lower() not in supported_operations:
                 raise UnsupportedRestrictionError(
@@ -100,7 +73,7 @@ def validate_restrictions(config: dict):
             column = restriction.get("column")
             value = restriction.get("value")
 
-            if column == "price" and not isinstance(value, (int, float)):
-                raise ValueError(
-                    f"Invalid value type for column '{column}'. Expected a numeric type."
-                )
+        # if column == "price" and not isinstance(value, (int, float)):
+        #    raise ValueError(
+        #       f"Invalid value type for column '{column}'. Expected a numeric type."
+        #  )
