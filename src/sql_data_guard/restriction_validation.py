@@ -71,7 +71,11 @@ def validate_restrictions(config: dict):
 
             # Validate the value type based on the column
             column = restriction.get("column")
-            value = restriction.get("value")
+            value = (
+                restriction.get("values")
+                if "values" in restriction
+                else restriction.get("value")
+            )
 
         # if column == "price" and not isinstance(value, (int, float)):
         #    raise ValueError(
