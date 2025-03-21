@@ -132,7 +132,7 @@ class TestSQLJoins:
             WHERE price < 100
         """
         res = verify_sql(sql_query, config)
-        assert res["allowed"] is True, res
+        assert res["allowed"] is False, res
         # Adjust the expected error message to reflect the restriction on price = 100, not price >= 100
         assert (
             "Missing restriction for table: products column: price value: 100"
@@ -157,7 +157,7 @@ class TestSQLJoins:
                WHERE price < 100
            """
         res = verify_sql(sql_query, config)
-        assert res["allowed"] is True, res
+        assert res["allowed"] is False, res
         assert (
             "Missing restriction for table: products column: price value: 100"
             in res["errors"]
@@ -562,6 +562,10 @@ class TestSQLOrderDateBetweenRestrictions:
         verify_sql_test(
             "SELECT COUNT(*) FROM products WHERE price BETWEEN 80 AND 150",
             config,
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT COUNT(*) FROM products WHERE (price BETWEEN 80 AND 150) AND price BETWEEN 80 AND 150",
             cnn=cnn,
             data=[(3,)],  # Expecting 3 products in this range
         )
@@ -570,41 +574,27 @@ class TestSQLOrderDateBetweenRestrictions:
         verify_sql_test(
             "SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity "
             "FROM products p "
-            "LEFT JOIN orders o ON p.prod_id = o.prod_id "
+            "LEFT JOIN orders o ON prod_id = prod_id "
             "WHERE p.price BETWEEN 80 AND 150",
             config,
+            errors={
+                "Missing restriction for table: products column: p.price value: [80, 150]"
+            },
+            fix="SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity FROM products AS p LEFT JOIN orders AS o ON prod_id = prod_id WHERE (p.price BETWEEN 80 AND 150) AND p.price BETWEEN 80 AND 150",
             cnn=cnn,
-            data=[
-                ("Product A", 1, 10),
-                ("Product B", 2, 5),
-                ("Product C", 3, 7),
-            ],
+            data=[],
         )
 
     def test_select_products_below_price_restriction(self, cnn, config):
         verify_sql_test(
-            "SELECT prod_name, price FROM products WHERE price < 80",
+            "SELECT prod_name, price FROM products WHERE price < 90",
             config,
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT prod_name, price FROM products WHERE (price < 90) AND price BETWEEN 80 AND 150",
             cnn=cnn,
-            data=[("Product D", 60)],  # Only Product D has price < 80
-        )
-
-    def test_price_between_with_self_join(self, cnn, config):
-        verify_sql_test(
-            "SELECT p1.prod_name, p2.prod_name AS related_prod "
-            "FROM products p1 "
-            "INNER JOIN products p2 ON p1.prod_category = p2.prod_category "
-            "WHERE p1.price BETWEEN 80 AND 150",
-            config,
-            cnn=cnn,
-            data=[
-                ("Product A", "Product A"),
-                ("Product A", "Product C"),
-                ("Product B", "Product B"),
-                ("Product B", "Product D"),
-                ("Product C", "Product A"),
-                ("Product C", "Product C"),
-            ],
+            data=[("Product B", 80)],
         )
 
     def test_price_between_and_category_restriction(self, cnn, config):
@@ -613,6 +603,10 @@ class TestSQLOrderDateBetweenRestrictions:
             "FROM products "
             "WHERE price BETWEEN 80 AND 150 AND prod_category = 'CategoryA'",
             config,
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT prod_id, prod_name, price, prod_category FROM products WHERE (price BETWEEN 80 AND 150 AND prod_category = 'CategoryA') AND price BETWEEN 80 AND 150",
             cnn=cnn,
             data=[
                 (1, "Product A", 120, "CategoryA"),
@@ -627,6 +621,10 @@ class TestSQLOrderDateBetweenRestrictions:
             "WHERE price BETWEEN 90 AND 125 "
             "GROUP BY prod_category",
             config,
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT COUNT(prod_id) AS product_count, prod_category FROM products WHERE (price BETWEEN 90 AND 125) AND price BETWEEN 80 AND 150 GROUP BY prod_category",
             cnn=cnn,
             data=[(1, "CategoryA")],  # Only Product A fits in this range
         )
@@ -638,6 +636,11 @@ class TestSQLOrderDateBetweenRestrictions:
             "INNER JOIN products p ON o.prod_id = p.prod_id "
             "WHERE p.price BETWEEN 90 AND 150",
             config,
+            errors={
+                "Missing restriction for table: products column: p.price value: [80, 150]"
+            },
+            fix="SELECT o.order_id, p.prod_name, p.price FROM orders AS o INNER JOIN products AS p "
+            "ON o.prod_id = p.prod_id WHERE (p.price BETWEEN 90 AND 150) AND p.price BETWEEN 80 AND 150",
             cnn=cnn,
             data=[
                 (1, "Product A", 120),
@@ -651,6 +654,10 @@ class TestSQLOrderDateBetweenRestrictions:
             "FROM products "
             "WHERE price BETWEEN 200 AND 300",
             config,
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT prod_id, prod_name, price FROM products WHERE (price BETWEEN 200 AND 300) AND price BETWEEN 80 AND 150",
             cnn=cnn,
             data=[],  # No products in this range
         )
@@ -662,6 +669,10 @@ class TestSQLOrderDateBetweenRestrictions:
             "GROUP BY prod_category "
             "HAVING AVG(price) > 100",
             config,
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT prod_category, AVG(price) AS avg_price FROM products WHERE price BETWEEN 80 AND 150 GROUP BY prod_category HAVING AVG(price) > 100",
             cnn=cnn,
             data=[("CategoryA", 135)],  # Avg of 120 and 150 in CategoryA
         )

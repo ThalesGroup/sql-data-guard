@@ -676,6 +676,10 @@ class TestMultipleRestriction:
             "SELECT id FROM products1 WHERE id IN (324)",
             config,
             cnn=cnn,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE (id IN (324)) AND id IN (324, 224)",
             data=[["324"]],
         )
 
@@ -686,49 +690,81 @@ class TestMultipleRestriction:
             errors={
                 "Missing restriction for table: products1 column: id value: [324, 224]"
             },
-            fix="SELECT id FROM products1 WHERE (id = 999) AND (id IN (324, 224))",
+            fix="SELECT id FROM products1 WHERE (id = 999) AND id IN (324, 224)",
             cnn=cnn,
             data=[],
         )
 
-    def test_query_with_in_operator(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN (324, 224)) AND id = '324, 224'""",
+    def test_query_with_in_operator(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE id IN (324, 224)""",
             config,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE (id IN (324, 224)) AND id IN (324, 224)",
+            cnn=cnn,
+            data=[],
         )
-        assert res["allowed"] == True, res
 
-    def test_with_in_operator2(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN (324, 233)) AND id = '324, 224'""",
+    def test_with_in_operator2(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE id IN (324, 233)""",
             config,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE (id IN (324, 233)) AND id IN (324, 224)",
+            cnn=cnn,
+            data=[],
         )
-        assert res["allowed"] == True, res
 
-    def test_in_operator_with_or(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN ('324', '224') OR prod_name IN ('prod3'))""",
+    def test_in_operator_with_or(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (id IN (324, 224) OR prod_name = 'prod3')""",
             config,
+            cnn=cnn,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="""SELECT id FROM products1 WHERE ((id IN (324, 224) OR prod_name = 'prod3')) AND id IN (324, 224)""",
+            data=[],
         )
-        assert res["allowed"] == True, res
 
-    def test_not_in_operator(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (NOT id IN ('324', '224')) AND id = '324, 224'""",
+    def test_not_in_operator(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (NOT id IN (324, 224))""",
             config,
+            cnn=cnn,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE ((NOT id IN (324, 224))) AND id IN (324, 224)",
+            data=[],
         )
-        assert res["allowed"] == True, res
 
-    def test_in_operator_with_numeric_values(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN (324, 224) AND category IN ('electronics', 'furniture')) AND id = '324, 224'""",
+    def test_in_operator_with_numeric_values(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (id IN (324, 224) AND category IN ('electronics', 'furniture'))""",
             config,
+            cnn=cnn,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE ((id IN (324, 224) AND category IN "
+            "('electronics', 'furniture'))) AND id IN (324, 224)",
+            data=[],
         )
-        assert res["allowed"] == True, res
 
-    def test_in_operator_with_between(self, config):
-        res = verify_sql(
-            """SELECT id FROM products1 WHERE (id IN ('324', '224') AND date BETWEEN '2024-01-01' AND '2025-01-01') AND id = '324, 224'""",
+    def test_in_operator_with_between(self, config, cnn):
+        verify_sql_test(
+            """SELECT id FROM products1 WHERE (id IN ('324', '224') AND date BETWEEN '2024-01-01' AND '2025-01-01')""",
             config,
+            cnn=cnn,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE ((id IN ('324', '224') AND date BETWEEN "
+            "'2024-01-01' AND '2025-01-01')) AND id IN (324, 224)",
+            data=[],
         )
-        assert res["allowed"] == True, res

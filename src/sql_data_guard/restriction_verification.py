@@ -70,16 +70,15 @@ def _create_new_condition(
     """
     if restriction.get("operation") == "BETWEEN":
         operator = "BETWEEN"
-        operand = f"{restriction["values"][0]} AND {restriction["values"][1]}"
-
+        operand = f"{_format_value(restriction["values"][0])} AND {_format_value(restriction["values"][1])}"
     elif restriction.get("operation") == "IN":
         operator = "IN"
-        operand = f"{restriction["values"][0]} OR {restriction["values"][1]}"
-
+        values = restriction.get("values", [restriction.get("value")])
+        operand = f"({', '.join(map(str, values))})"
     else:
         operator = "="
         operand = (
-            restriction["value"]
+            _format_value(restriction["value"])
             if "value" in restriction
             else str(restriction["values"])[1:-1]
         )
@@ -88,6 +87,13 @@ def _create_new_condition(
         dialect=context.dialect,
     )
     return new_condition
+
+
+def _format_value(value):
+    if isinstance(value, str):
+        return f"'{value}'"
+    else:
+        return value
 
 
 def _verify_restriction(
@@ -128,7 +134,7 @@ def _verify_restriction(
         return any(v in values for v in sql_values)
     if isinstance(exp, expr.In):
         values = [v.this for v in exp.expressions]
-        return True
+        return False
     return False
 
 
