@@ -385,8 +385,7 @@ WHERE bool_col = True AND str_col1 = 'abc' AND str_col2 = 'def'""",
 
     def test_restrictions_value_missmatch(self, config, cnn):
         verify_sql_test(
-            """SELECT COUNT() FROM my_table 
-WHERE bool_col = True AND str_col1 = 'def' AND str_col2 = 'abc'""",
+            """SELECT COUNT() FROM my_table WHERE bool_col = True AND str_col1 = 'def' AND str_col2 = 'abc'""",
             config,
             {
                 "Missing restriction for table: my_table column: str_col1 value: abc",
