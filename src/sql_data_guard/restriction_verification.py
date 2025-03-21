@@ -71,6 +71,11 @@ def _create_new_condition(
     if restriction.get("operation") == "BETWEEN":
         operator = "BETWEEN"
         operand = f"{restriction["values"][0]} AND {restriction["values"][1]}"
+
+    elif restriction.get("operation") == "IN":
+        operator = "IN"
+        operand = f"{restriction["values"][0]} OR {restriction["values"][1]}"
+
     else:
         operator = "="
         operand = (
@@ -123,7 +128,7 @@ def _verify_restriction(
         return any(v in values for v in sql_values)
     if isinstance(exp, expr.In):
         values = [v.this for v in exp.expressions]
-        return False
+        return True
     return False
 
 

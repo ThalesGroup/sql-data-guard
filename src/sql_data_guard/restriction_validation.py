@@ -56,6 +56,18 @@ def validate_restrictions(config: dict):
                     raise ValueError(
                         f"Invalid 'BETWEEN' format. Expected list of two numeric values where min < max. Received: {values}"
                     )
+
+            elif operation == "IN":
+                values = restriction.get("values")
+                if not (
+                    isinstance(values, list)
+                    and len(values) == 2
+                    and all(isinstance(v, (int, float)) for v in values)
+                ):
+                    raise ValueError(
+                        f"Invalid 'IN' format. Expected list of two numeric values. Received: {values}"
+                    )
+
             elif operation == ">=":
                 # You may want to ensure the value provided is numeric for >=
                 value = restriction.get("value")
