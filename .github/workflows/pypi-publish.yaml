@@ -97,8 +97,8 @@ jobs:
         python -m venv .venv
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        echo "Waiting for 150 seconds to make sure package is available"
-        sleep 150                        
+        echo "Waiting for 300 seconds to make sure package is available"
+        sleep 300            
         pip install --no-cache-dir sql-data-guard==${{ env.VERSION }}
         pip install pytest
       shell: bash
