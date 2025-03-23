@@ -98,7 +98,7 @@ jobs:
         source .venv/bin/activate
         python -m pip install --upgrade pip
         echo "Waiting for 10 seconds to make sure package is available"
-        sleep 10                
+        sleep 30                
         pip install sql-data-guard==${{ env.VERSION }}
         pip install pytest
       shell: bash
