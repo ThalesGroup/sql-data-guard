@@ -22,13 +22,14 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Update version in toml
+    - name: Set version environment variable
+      id: set_version
       env:
         VERSION: ${{ github.event.inputs.version || github.ref_name }}
-      run: |
-        VERSION=${VERSION#v}
-        echo $VERSION
-        sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+      run: echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
+
+    - name: Update version in toml
+      run: sed -i "s/^version = .*/version = \"${{ env.VERSION }}\"/" pyproject.toml
 
     - name: Install pypa/build
       run: python3 -m pip install build --user
@@ -53,3 +54,23 @@ jobs:
       with:
         repository-url: https://test.pypi.org/legacy/
         verbose: true
+
+    - name: Create virtual environment for test PyPi
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        python -m pip install --upgrade pip
+        pip install --index-url https://test.pypi.org/simple/ sql-data-guard==${{ env.VERSION }}
+        pip install pytest
+      shell: bash
+
+    - name: Run unit tests with test PyPi package
+      # This step runs the unit tests with the test PyPi package, the src dir is not in the context
+      # This specific unit test file only uses public methods from the package
+      run: |
+        source .venv/bin/activate        
+        python -m pytest --color=yes test/test_sql_guard_unit.py
+
+    - name: Clear test PyPi virtual environment
+      run: rm -rf .venv
+      shell: bash
