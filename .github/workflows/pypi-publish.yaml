@@ -29,7 +29,13 @@ jobs:
       run: echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
 
     - name: Update version in toml
-      run: sed -i "s/^version = .*/version = \"${{ env.VERSION }}\"/" pyproject.toml
+      run: |
+        sed -i "s/^version = .*/version = \"${{ env.VERSION }}\"/" pyproject.toml
+
+    - name: Update links in README
+      run: |
+        REPO_URL="https://github.com/${{ github.repository }}"
+        sed -i "s|sql-data-guard-logo.png|${REPO_URL}/blob/main/sql-data-guard-logo.png|g" README.md
 
     - name: Install pypa/build
       run: python3 -m pip install build --user

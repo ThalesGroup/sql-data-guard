@@ -9,6 +9,9 @@ package-dir = {"" = "src"}
 [project]
 name = "sql-data-guard"
 version = "UPDATED-BY-WORKFLOW"
+dependencies = [
+    "sqlglot"
+]
 authors = [
   { name="Imperva - Threat Reseach Infra", email="ww.dis.imperva.threat-research-infra@thalesgroup.com" },
 ]
