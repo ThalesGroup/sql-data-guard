@@ -80,3 +80,24 @@ jobs:
     - name: Clear test PyPi virtual environment
       run: rm -rf .venv
       shell: bash
+
+    - name: Publish distribution 📦 to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        verbose: true
+
+    - name: Create virtual environment for PyPi
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        python -m pip install --upgrade pip
+        pip install sql-data-guard==${{ env.VERSION }}
+        pip install pytest
+      shell: bash
+
+    - name: Run unit tests with test PyPi package
+      # This step runs the unit tests with the test PyPi package, the src dir is not in the context
+      # This specific unit test file only uses public methods from the package
+      run: |
+        source .venv/bin/activate        
+        python -m pytest --color=yes test/test_sql_guard_unit.py
