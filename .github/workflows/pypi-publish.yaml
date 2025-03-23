@@ -54,10 +54,8 @@ jobs:
       run: |
         python -m venv .venv
         source .venv/bin/activate
-        python -m pip install --upgrade pip
-        echo "Waiting for 10 seconds to make sure package is available"
-        sleep 10        
-        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ sql-data-guard==${{ env.VERSION }}
+        python -m pip install --upgrade pip        
+        pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ sql-data-guard==${{ env.VERSION }}
         pip install pytest
       shell: bash
 
@@ -97,9 +95,7 @@ jobs:
         python -m venv .venv
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        echo "Waiting for 10 seconds to make sure package is available"
-        sleep 30                
-        pip install sql-data-guard==${{ env.VERSION }}
+        pip install --no-cache-dir sql-data-guard==${{ env.VERSION }}
         pip install pytest
       shell: bash
 
