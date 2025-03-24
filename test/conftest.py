@@ -30,7 +30,7 @@ def verify_sql_test(
     else:
         assert result["fixed"] == fix
         sql_to_use = result["fixed"]
-    if cnn and data:
+    if cnn and data is not None:
         fetched_data = cnn.execute(sql_to_use).fetchall()
         if data is not None:
             assert fetched_data == [tuple(row) for row in data]
