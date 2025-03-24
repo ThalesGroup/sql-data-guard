@@ -19,7 +19,6 @@ def validate_restrictions(config: dict):
         "<",
         ">=",
         "<=",
-        "!=",
         "BETWEEN",
         "IN",
     ]  # Allowed operations
