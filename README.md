@@ -118,6 +118,7 @@ To run the sql-data-guard Docker container, use the following command:
 
 ```bash
 docker run -d --name sql-data-guard -p 5000:5000 ghcr.io/thalesgroup/sql-data-guard
+```
 
 ### Calling the Docker Container Using REST API
 
