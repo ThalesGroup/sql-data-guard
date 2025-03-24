@@ -34,7 +34,7 @@ jobs:
 
     - name: Update links in README
       run: |        
-        REPO_URL="https://raw.githubusercontent.com/{{ github.repository }}/main"
+        REPO_URL="https://raw.githubusercontent.com/${{ github.repository }}/main"
         sed -i "s|sql-data-guard-logo.png|${REPO_URL}/sql-data-guard-logo.png|g" README.md
         sed -i "s|(manual.md)|(${REPO_URL}/docs/manual.md)|g" README.md
         sed -i "s|(CONTRIBUTING.md)|(${REPO_URL}/CONTRIBUTING.md)|g" README.md
@@ -58,8 +58,8 @@ jobs:
         python -m venv .venv
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        echo "Waiting for 90 seconds to make sure package is available"
-        sleep 90                                
+        echo "Waiting for 180 seconds to make sure package is available"
+        sleep 180                              
         pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ sql-data-guard==${{ env.VERSION }}
         pip install pytest
       shell: bash
