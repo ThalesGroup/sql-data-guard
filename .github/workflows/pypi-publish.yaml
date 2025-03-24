@@ -33,11 +33,12 @@ jobs:
         sed -i "s/^version = .*/version = \"${{ env.VERSION }}\"/" pyproject.toml
 
     - name: Update links in README
-      run: |
-        REPO_URL="https://github.com/${{ github.repository }}"
-        sed -i "s|sql-data-guard-logo.png|${REPO_URL}/blob/main/sql-data-guard-logo.png|g" README.md
-        sed -i "s|(CONTRIBUTING.md)|${REPO_URL}/blob/main/CONTRIBUTING.md|g" README.md
-        sed -i "s|(LICENSE.md)|${REPO_URL}/blob/main/LICENSE.md|g" README.md
+      run: |        
+        REPO_URL="https://raw.githubusercontent.com/{{ github.repository }}/main"
+        sed -i "s|sql-data-guard-logo.png|${REPO_URL}/sql-data-guard-logo.png|g" README.md
+        sed -i "s|(manual.md)|(${REPO_URL}/docs/manual.md)|g" README.md
+        sed -i "s|(CONTRIBUTING.md)|(${REPO_URL}/CONTRIBUTING.md)|g" README.md
+        sed -i "s|(LICENSE.md)|(${REPO_URL}/LICENSE.md)|g" README.md
 
     - name: Install pypa/build
       run: python3 -m pip install build --user
@@ -57,8 +58,8 @@ jobs:
         python -m venv .venv
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        echo "Waiting for 30 seconds to make sure package is available"
-        sleep 30                                
+        echo "Waiting for 90 seconds to make sure package is available"
+        sleep 90                                
         pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ sql-data-guard==${{ env.VERSION }}
         pip install pytest
       shell: bash
