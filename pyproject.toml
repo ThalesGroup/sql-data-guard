@@ -5,10 +5,14 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 include-package-data = false
 package-dir = {"" = "src"}
-
+[tool.pip]
+extra-index-url = ["https://pypi.org/simple"]
 [project]
 name = "sql-data-guard"
 version = "UPDATED-BY-WORKFLOW"
+dependencies = [
+    "sqlglot"
+]
 authors = [
   { name="Imperva - Threat Reseach Infra", email="ww.dis.imperva.threat-research-infra@thalesgroup.com" },
 ]

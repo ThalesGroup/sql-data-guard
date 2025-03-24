@@ -22,18 +22,57 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Update version in toml
+    - name: Set version environment variable
+      id: set_version
       env:
         VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      run: echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
+
+    - name: Update version in toml
       run: |
-        VERSION=${VERSION#v}
-        echo $VERSION
-        sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+        sed -i "s/^version = .*/version = \"${{ env.VERSION }}\"/" pyproject.toml
+
+    - name: Update links in README
+      run: |
+        REPO_URL="https://github.com/${{ github.repository }}"
+        sed -i "s|sql-data-guard-logo.png|${REPO_URL}/blob/main/sql-data-guard-logo.png|g" README.md
 
     - name: Install pypa/build
       run: python3 -m pip install build --user
 
-    - name: Build a binary wheel and a source tarball
+    - name: Build a binary wheel and a source tarball for test PyPi
+      run: python3 -m build --outdir dist-testpypi
+
+    - name: Publish distribution 📦 to TestPyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        packages-dir: dist-testpypi
+        verbose: true
+
+    - name: Create virtual environment for test PyPi
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        python -m pip install --upgrade pip
+        echo "Waiting for 30 seconds to make sure package is available"
+        sleep 30                                
+        pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ sql-data-guard==${{ env.VERSION }}
+        pip install pytest
+      shell: bash
+
+    - name: Run unit tests with test PyPi package
+      # This step runs the unit tests with the test PyPi package, the src dir is not in the context
+      # This specific unit test file only uses public methods from the package
+      run: |
+        source .venv/bin/activate        
+        python -m pytest --color=yes test/test_sql_guard_unit.py
+
+    - name: Clear test PyPi virtual environment
+      run: rm -rf .venv
+      shell: bash
+
+    - name: Build a binary wheel and a source tarball for test PyPi
       run: python3 -m build
 
     - name: Store the distribution packages
@@ -48,8 +87,25 @@ jobs:
         name: python-package-distributions
         path: dist/
 
-    - name: Publish distribution 📦 to TestPyPI
+    - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        repository-url: https://test.pypi.org/legacy/
         verbose: true
+
+    - name: Create virtual environment for PyPi
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        python -m pip install --upgrade pip
+        echo "Waiting for 300 seconds to make sure package is available"
+        sleep 300            
+        pip install --no-cache-dir sql-data-guard==${{ env.VERSION }}
+        pip install pytest
+      shell: bash
+
+    - name: Run unit tests with test PyPi package
+      # This step runs the unit tests with the test PyPi package, the src dir is not in the context
+      # This specific unit test file only uses public methods from the package
+      run: |
+        source .venv/bin/activate        
+        python -m pytest --color=yes test/test_sql_guard_unit.py
