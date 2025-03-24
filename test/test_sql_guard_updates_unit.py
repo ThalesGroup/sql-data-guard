@@ -647,7 +647,9 @@ class TestMultipleRestriction:
                         "prod_name",
                         "category",
                     ],  # category stored as JSON
-                    "restrictions": [{"column": "id", "values": [324, 224]}],
+                    "restrictions": [
+                        {"column": "id", "values": [324, 224], "operation": "IN"}
+                    ],
                 },
                 {
                     "table_name": "customers",
@@ -704,7 +706,7 @@ class TestMultipleRestriction:
             },
             fix="SELECT id FROM products1 WHERE (id IN (324, 224)) AND id IN (324, 224)",
             cnn=cnn,
-            data=[],
+            data=[["324"]],
         )
 
     def test_with_in_operator2(self, config, cnn):
@@ -716,7 +718,7 @@ class TestMultipleRestriction:
             },
             fix="SELECT id FROM products1 WHERE (id IN (324, 233)) AND id IN (324, 224)",
             cnn=cnn,
-            data=[],
+            data=[["324"]],
         )
 
     def test_in_operator_with_or(self, config, cnn):
@@ -728,7 +730,7 @@ class TestMultipleRestriction:
                 "Missing restriction for table: products1 column: id value: [324, 224]"
             },
             fix="""SELECT id FROM products1 WHERE ((id IN (324, 224) OR prod_name = 'prod3')) AND id IN (324, 224)""",
-            data=[],
+            data=[["324"]],
         )
 
     def test_not_in_operator(self, config, cnn):
@@ -745,13 +747,13 @@ class TestMultipleRestriction:
 
     def test_in_operator_with_numeric_values(self, config, cnn):
         verify_sql_test(
-            """SELECT id FROM products1 WHERE (id IN (324, 224) AND category IN ('electronics', 'furniture'))""",
+            """SELECT id FROM products2 WHERE (id IN (324, 224) AND category IN ('electronics', 'furniture'))""",
             config,
             cnn=cnn,
             errors={
-                "Missing restriction for table: products1 column: id value: [324, 224]"
+                "Missing restriction for table: products2 column: id value: [324, 224]"
             },
-            fix="SELECT id FROM products1 WHERE ((id IN (324, 224) AND category IN "
+            fix="SELECT id FROM products2 WHERE ((id IN (324, 224) AND category IN "
             "('electronics', 'furniture'))) AND id IN (324, 224)",
             data=[],
         )
