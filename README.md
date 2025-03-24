@@ -78,8 +78,6 @@ Here is a table with more examples of SQL queries and their corresponding JSON o
 | SELECT id, col FROM orders WHERE account_id = 123      | { "allowed": false, "errors": ["Column col is not allowed. Column removed from SELECT clause"], "fixed": "SELECT id FROM orders WHERE account_id = 123" } ```               |
 | SELECT id FROM orders WHERE account_id = 123 OR 1 = 1 | { "allowed": false, "errors": ["Always-True expression is not allowed"], "fixed": "SELECT id FROM orders WHERE account_id = 123" }                                                  |
 |SELECT * FROM orders WHERE account_id = 123| {"allowed": false, "errors": ["SELECT * is not allowed"], "fixed": "SELECT id, product_name, account_id FROM orders WHERE account_id = 123"}                                |
-```
-
 
 This table provides a variety of SQL queries and their corresponding JSON outputs, demonstrating how `sql-data-guard` handles different scenarios.
 
