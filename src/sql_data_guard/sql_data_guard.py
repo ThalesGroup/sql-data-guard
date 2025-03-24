@@ -124,6 +124,10 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
 
 
 def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
+    for select in query_statement.selects:
+        for sub in select.find_all(expr.Subquery):
+            _add_table_alias(sub, context)
+            _verify_query_statement(sub.this, context)
     if isinstance(query_statement, expr.Union):
         _verify_query_statement(query_statement.left, context)
         _verify_query_statement(query_statement.right, context)

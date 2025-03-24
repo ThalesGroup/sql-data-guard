@@ -71,3 +71,9 @@
 {"name": "self_join", "sql": "SELECT o1.id, o2.id FROM orders AS o1 CROSS JOIN orders AS o2 WHERE o1.id = 123", "errors": ["Missing restriction for table: orders column: o2.id value: 123"], "fix": "SELECT o1.id, o2.id FROM orders AS o1 CROSS JOIN orders AS o2 WHERE (o1.id = 123) AND o2.id = 123", "data": [[123, 123]]}
 {"name": "self_join_no_alias", "sql": "SELECT o1.id, orders.id FROM orders AS o1 CROSS JOIN orders WHERE o1.id = 123", "errors": ["Missing restriction for table: orders column: orders.id value: 123"], "fix": "SELECT o1.id, orders.id FROM orders AS o1 CROSS JOIN orders WHERE (o1.id = 123) AND orders.id = 123", "data": [[123, 123]]}
 {"name": "test_paren_with_and", "sql": "SELECT id FROM orders WHERE (id = 1 AND id = 2) AND id = 123", "data": []}
+{"name": "select_clause_inside_select", "sql": "SELECT (SELECT id FROM orders where id=123) AS id FROM orders WHERE id = 123", "errors": [], "data": [[123]]}
+{"name": "inner_select_clause_missing_restriction", "sql": "SELECT (SELECT id FROM orders) AS id", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT (SELECT id FROM orders WHERE id = 123) AS id", "data": [[123]]}
+{"name": "inner_select_clause_restricted_table", "sql": "SELECT (SELECT id FROM users) AS id", "errors": ["Table users is not allowed"]}
+{"name": "inner_select_clause_restricted_table2", "sql": "SELECT (SELECT id FROM users LIMIT 1) AS id FROM orders WHERE id = 123", "errors": ["Table users is not allowed"]}
+{"name": "inner_select_clause_restricted_table3", "sql": "SELECT (SELECT id FROM users LIMIT 1) FROM orders WHERE id = 123", "errors": ["Table users is not allowed"]}
+{"name": "inner_select_clause_restricted_col1", "sql": "SELECT (SELECT col1, id FROM orders WHERE id = 123) FROM orders WHERE id = 123", "errors": ["Column col1 is not allowed. Column removed from SELECT clause"], "fix": "SELECT (SELECT id FROM orders WHERE id = 123) FROM orders WHERE id = 123", "data": [[123]]}
