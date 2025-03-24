@@ -36,6 +36,8 @@ jobs:
       run: |
         REPO_URL="https://github.com/${{ github.repository }}"
         sed -i "s|sql-data-guard-logo.png|${REPO_URL}/blob/main/sql-data-guard-logo.png|g" README.md
+        sed -i "s|(CONTRIBUTING.md)|${REPO_URL}/blob/main/CONTRIBUTING.md|g" README.md
+        sed -i "s|(LICENSE.md)|${REPO_URL}/blob/main/LICENSE.md|g" README.md
 
     - name: Install pypa/build
       run: python3 -m pip install build --user
