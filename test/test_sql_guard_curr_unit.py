@@ -534,11 +534,19 @@ class TestSQLOrderDateBetweenRestrictions:
 
     def test_price_between_valid(self, cnn, config):
         verify_sql_test(
-            "SELECT prod_id, prod_name, price"
-            "FROM products WHERE price BETWEEN 80 AND 150",
+            "SELECT prod_id, prod_name, price FROM products WHERE price BETWEEN 80 AND 150",
             config,
             cnn=cnn,
-            data=[],
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT prod_id, prod_name, price FROM products WHERE (price BETWEEN 80 AND "
+            "150) AND price BETWEEN 80 AND 150",
+            data=[
+                (1, "Product A", 120.0),
+                (2, "Product B", 80.0),
+                (3, "Product C", 150.0),
+            ],
         )
 
     def test_price_not_between_restriction(self, cnn, config):
@@ -572,17 +580,19 @@ class TestSQLOrderDateBetweenRestrictions:
 
     def test_left_join_products_with_orders(self, cnn, config):
         verify_sql_test(
-            "SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity "
-            "FROM products p "
-            "LEFT JOIN orders o ON prod_id = prod_id "
-            "WHERE p.price BETWEEN 80 AND 150",
+            """SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity 
+            FROM products p 
+            LEFT JOIN orders o ON p.prod_id = o.prod_id 
+            WHERE p.price BETWEEN 80 AND 150""",
             config,
             errors={
                 "Missing restriction for table: products column: p.price value: [80, 150]"
             },
-            fix="SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity FROM products AS p LEFT JOIN orders AS o ON prod_id = prod_id WHERE (p.price BETWEEN 80 AND 150) AND p.price BETWEEN 80 AND 150",
+            fix="SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity FROM "
+            "products AS p LEFT JOIN orders AS o ON p.prod_id = o.prod_id WHERE (p.price "
+            "BETWEEN 80 AND 150) AND p.price BETWEEN 80 AND 150",
             cnn=cnn,
-            data=[],
+            data=[("Product A", 1, 10), ("Product B", 2, 5), ("Product C", 3, 7)],
         )
 
     def test_select_products_below_price_restriction(self, cnn, config):
