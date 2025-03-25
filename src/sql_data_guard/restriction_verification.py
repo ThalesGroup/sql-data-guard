@@ -70,7 +70,7 @@ def _create_new_condition(
     """
     if restriction.get("operation") == "BETWEEN":
         operator = "BETWEEN"
-        operand = f"{_format_value(restriction["values"][0])} AND {_format_value(restriction["values"][1])}"
+        operand = f"{_format_value(restriction['values'][0])} AND {_format_value(restriction['values'][1])}"
     elif restriction.get("operation") == "IN":
         operator = "IN"
         values = restriction.get("values", [restriction.get("value")])
