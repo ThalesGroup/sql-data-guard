@@ -37,6 +37,14 @@ sql-data-guard % PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
 ```
 Unit tests also run automatically on every push using a dedicated workflow.
 
+### Version publication
+
+The versions of the projects are managed using git tags. To publish a new version, make sure the main branch is up-to-date and create a new tag with the version number:
+```sh
+git tag -a v0.1.0 -m "Release 0.1.0"
+git push --tags
+```
+Workflow will automatically publish the new version to PyPI and to the Docker repository under github container registry.
 
 ### Issues management
 
