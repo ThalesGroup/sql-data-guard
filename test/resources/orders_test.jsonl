@@ -77,3 +77,4 @@
 {"name": "inner_select_clause_restricted_table2", "sql": "SELECT (SELECT id FROM users LIMIT 1) AS id FROM orders WHERE id = 123", "errors": ["Table users is not allowed"]}
 {"name": "inner_select_clause_restricted_table3", "sql": "SELECT (SELECT id FROM users LIMIT 1) FROM orders WHERE id = 123", "errors": ["Table users is not allowed"]}
 {"name": "inner_select_clause_restricted_col1", "sql": "SELECT (SELECT col1, id FROM orders WHERE id = 123) FROM orders WHERE id = 123", "errors": ["Column col1 is not allowed. Column removed from SELECT clause"], "fix": "SELECT (SELECT id FROM orders WHERE id = 123) FROM orders WHERE id = 123", "data": [[123]]}
+{"name": "multiple_joins1", "sql": "SELECT id FROM orders AS o1 JOIN orders AS o2 JOIN users WHERE o1.id=123 AND o2.id=123", "errors": ["Table users is not allowed"]}

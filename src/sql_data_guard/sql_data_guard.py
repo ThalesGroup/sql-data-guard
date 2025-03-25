@@ -251,8 +251,8 @@ def _get_from_clause_tables(
     """
     result = []
     from_clause = select_clause.find(expr.From)
-    join_clause = select_clause.find(expr.Join)
-    for clause in [from_clause, join_clause]:
+    join_clauses = list(select_clause.find_all(expr.Join))
+    for clause in [from_clause] + join_clauses:
         if clause:
             for t in find_direct(clause, expr.Table):
                 if isinstance(t, expr.Table):
@@ -260,7 +260,7 @@ def _get_from_clause_tables(
             for l in find_direct(clause, expr.Subquery):
                 _add_table_alias(l, context)
                 _verify_query_statement(l.this, context)
-    if join_clause:
+    for join_clause in join_clauses:
         for l in find_direct(join_clause, expr.Lateral):
             _add_table_alias(l, context)
             _verify_query_statement(l.this.find(expr.Select), context)
