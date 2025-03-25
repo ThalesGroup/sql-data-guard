@@ -252,6 +252,7 @@ INSERT INTO orders (order_id, account_id, product_id) VALUES
         COUNT(o.order_id) AS order_count
     FROM orders o    
     JOIN products p ON o.product_id = p.product_id
+    WHERE o.account_id = 123
     GROUP BY o.account_id, p.product_name
 ),
 RankedProducts AS (
@@ -273,11 +274,16 @@ FROM OrderCounts oc
 JOIN RankedProducts rp ON oc.product_name = rp.product_name
 WHERE oc.account_id IN (
     -- Filter accounts with at least 2 orders
-    SELECT account_id FROM orders GROUP BY account_id HAVING COUNT(order_id) >= 2
+    SELECT account_id FROM orders
+    WHERE account_id = 123
+    GROUP BY account_id HAVING COUNT(order_id) >= 2
 )
 ORDER BY oc.account_id, rp.product_rank;"""
-        verify_sql_test_data(
-            sql, config, cnn, [(123, "Laptop", 1, 1), (123, "Smartphone", 1, 1)]
+        verify_sql_test(
+            sql,
+            config,
+            cnn=cnn,
+            data=[(123, "Laptop", 1, 1), (123, "Smartphone", 1, 1)],
         )
 
 

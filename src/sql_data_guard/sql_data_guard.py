@@ -135,6 +135,10 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
     for cte in query_statement.ctes:
         _add_table_alias(cte, context)
         _verify_query_statement(cte.this, context)
+    where_clause = query_statement.find(expr.Where)
+    if where_clause:
+        for sub in where_clause.find_all(expr.Subquery):
+            _verify_query_statement(sub.this, context)
     from_tables = _get_from_clause_tables(query_statement, context)
     for t in from_tables:
         found = False
@@ -251,7 +255,7 @@ def _get_from_clause_tables(
     """
     result = []
     from_clause = select_clause.find(expr.From)
-    join_clauses = list(select_clause.find_all(expr.Join))
+    join_clauses = select_clause.args.get("joins", [])
     for clause in [from_clause] + join_clauses:
         if clause:
             for t in find_direct(clause, expr.Table):
