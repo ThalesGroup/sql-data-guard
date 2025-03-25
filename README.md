@@ -69,6 +69,9 @@ Output:
     "fixed": "SELECT id, product_name, account_id FROM orders WHERE account_id = 123"
 }
 ```
+For more details on restriction rules and validation, see the [manual.](docs/manual.md)
+
+
 Here is a table with more examples of SQL queries and their corresponding JSON outputs:
 
 | SQL Query                                               | JSON Output                                                                                                                                                                         |
@@ -87,24 +90,6 @@ To install sql-data-guard, use pip:
 ```bash
 pip install sql-data-guard
 ```
-## Restriction Schema and Validation
-
-Restrictions are used to validate queries by ensuring that only supported operations are applied to table columns. The `validate_restrictions` function enforces these rules, allowing only specific operations and ensuring correct formats.
-## **Supported Operations**
-- `=` (Equal to)  
-- `>` (Greater than)  
-- `<` (Less than)  
-- `>=` (Greater than or equal to)  
-- `<=` (Less than or equal to)  
-- `BETWEEN` (Range validation)  
-- `IN` (List validation)  
-
-## **Example for Restriction**
-```
-  "column": "price",
-  "operation": ">=",
-  "value": 100
-  ```
 
 ## Docker Repository
 

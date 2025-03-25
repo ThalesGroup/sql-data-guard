@@ -1,7 +1,7 @@
 ### **Restriction Schema and Validation**
 
 Restrictions are utilized to validate queries by ensuring that only supported operations are applied to the columns of tables.
-The core logic for this validation is handled by the `validate_restrictions` function. The restrictions determine how values are compared against table columns in SQL queries. Below is a breakdown of how the restrictions are validated, the available operations, and the conditions under which they are applied.
+The restrictions determine how values are compared against table columns in SQL queries. Below is a breakdown of how the restrictions are validated, the available operations, and the conditions under which they are applied.
 
 #### **Supported Operations**
 
@@ -15,10 +15,7 @@ The following operations are supported in the restriction schema:
 - **`BETWEEN`**: Between two values – Validates if the column value is within a specified range.
 - **`IN`**: In a specified list of values – Validates if the column value matches any of the values in the given list.
 
-These operations are validated by the `validate_restrictions` function to ensure that only supported operations are used and that they follow the correct format.
-
 #### **Restriction Structure**
-
 Each restriction in the configuration consists of the following keys:
 - **`column`**: The name of the column the restriction is applied to (e.g., `"price"` or `"order_id"`).
 - **`value`** or **`values`**: The value(s) to compare the column against:
