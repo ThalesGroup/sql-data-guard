@@ -110,6 +110,24 @@ def _verify_restriction(
     Returns:
         bool: True if the restriction is satisfied, False otherwise.
     """
+    if isinstance(exp, expr.Not) and isinstance(exp.this, expr.In):
+        expr_values = [int(val.this) for val in exp.this.expressions]  # Convert to int
+        restriction_values = [
+            int(val) for val in restriction["values"]
+        ]  # Convert to int
+
+        # NOT IN should be valid if it only excludes values in the restriction
+        return all(val in restriction_values for val in expr_values)
+
+    if isinstance(exp, expr.Or):
+        left_expr, right_expr = exp.this, exp.args["expression"]
+
+        # Check if the left OR right side maintains restriction
+        left_valid = _verify_restriction(restriction, from_table, left_expr)
+        right_valid = _verify_restriction(restriction, from_table, right_expr)
+
+        # One of the OR conditions must match the restriction to be valid
+        return left_valid or right_valid
 
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
@@ -140,7 +158,7 @@ def _verify_restriction(
 
         # Check if the expression is a NOT BETWEEN condition (e.g., price NOT BETWEEN 80 AND 150)
     if isinstance(exp, expr.Not) and isinstance(exp.this, expr.Between):
-        low = int(exp.this.args["low"].this)   # Extract lower bound
+        low = int(exp.this.args["low"].this)  # Extract lower bound
         high = int(exp.this.args["high"].this)  # Extract upper bound
         restriction_low, restriction_high = map(
             int, restriction["values"]
@@ -193,10 +211,13 @@ def _verify_restriction(
 
     # Check if the expression is an IN condition (e.g., price IN (100, 120, 150))
     if isinstance(exp, expr.In):
-        values = [v.this for v in exp.expressions]  # Extract values inside IN
-        return False  # This case is not handled, so return False
+        expr_values = [int(val.this) for val in exp.expressions]  # Extract SQL values
+        restriction_values = [
+            int(val) for val in restriction["values"]
+        ]  # Extract allowed values
 
-    #  If no condition matches, return False
+        return any(v in restriction_values for v in expr_values)
+
     return False
 
 
