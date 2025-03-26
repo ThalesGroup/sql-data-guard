@@ -140,7 +140,7 @@ def _verify_restriction(
 
         # Check if the expression is a NOT BETWEEN condition (e.g., price NOT BETWEEN 80 AND 150)
     if isinstance(exp, expr.Not) and isinstance(exp.this, expr.Between):
-        low = int(exp.this.args["low"].this)  # Extract lower bound
+        low = int(exp.this.args["low"].this)   # Extract lower bound
         high = int(exp.this.args["high"].this)  # Extract upper bound
         restriction_low, restriction_high = map(
             int, restriction["values"]

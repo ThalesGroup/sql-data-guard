@@ -549,7 +549,7 @@ class TestSQLOrderDateBetweenRestrictions:
             "SELECT COUNT(*) FROM products WHERE price BETWEEN 80 AND 150",
             config,
             cnn=cnn,
-            data=[(3,)],  # Expecting 3 products in this range
+            data=[(3,)],  # Expecting 3 products
         )
 
     def test_left_join_products_with_orders(self, cnn, config):
