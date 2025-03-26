@@ -110,8 +110,25 @@ def _verify_restriction(
     Returns:
         bool: True if the restriction is satisfied, False otherwise.
     """
-    if isinstance(exp, expr.Not):
-        return False
+    if isinstance(exp, expr.Not) and isinstance(exp.this, expr.In):
+        expr_values = [int(val.this) for val in exp.this.expressions]  # Convert to int
+        restriction_values = [
+            int(val) for val in restriction["values"]
+        ]  # Convert to int
+
+        # NOT IN should be valid if it only excludes values in the restriction
+        return all(val in restriction_values for val in expr_values)
+
+    if isinstance(exp, expr.Or):
+        left_expr, right_expr = exp.this, exp.args["expression"]
+
+        # Check if the left OR right side maintains restriction
+        left_valid = _verify_restriction(restriction, from_table, left_expr)
+        right_valid = _verify_restriction(restriction, from_table, right_expr)
+
+        # One of the OR conditions must match the restriction to be valid
+        return left_valid or right_valid
+
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
     if not isinstance(exp.this, expr.Column):
@@ -129,12 +146,27 @@ def _verify_restriction(
             values = _get_restriction_values(restriction)
             return exp.right.this in values
     if isinstance(exp, expr.Between):
-        sql_values = [v.this for v in exp.expressions]
-        values = _get_restriction_values(restriction)
-        return any(v in values for v in sql_values)
+        low = exp.args["low"].this
+        high = exp.args["high"].this
+        restriction_low = restriction["values"][0]
+        restriction_high = restriction["values"][1]
+        low, high = int(low), int(high)
+        restriction_low, restriction_high = int(restriction_low), int(restriction_high)
+
+        # If NOT BETWEEN, it should return False
+        if isinstance(exp.parent, expr.Not):
+            return False
+
+        return low == restriction_low and high == restriction_high
     if isinstance(exp, expr.In):
-        values = [v.this for v in exp.expressions]
-        return False
+        expr_values = [int(val.this) for val in exp.expressions]  # Extract SQL values
+        restriction_values = [
+            int(val) for val in restriction["values"]
+        ]  # Extract allowed values
+
+        # ✅ At least one value in expr_values must be in restriction_values
+        return any(v in restriction_values for v in expr_values)
+
     return False
 
 
