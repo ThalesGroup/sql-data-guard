@@ -119,16 +119,6 @@ def _verify_restriction(
         # NOT IN should be valid if it only excludes values in the restriction
         return all(val in restriction_values for val in expr_values)
 
-    if isinstance(exp, expr.Or):
-        left_expr, right_expr = exp.this, exp.args["expression"]
-
-        # Check if the left OR right side maintains restriction
-        left_valid = _verify_restriction(restriction, from_table, left_expr)
-        right_valid = _verify_restriction(restriction, from_table, right_expr)
-
-        # One of the OR conditions must match the restriction to be valid
-        return left_valid or right_valid
-
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
     if not isinstance(exp.this, expr.Column):
