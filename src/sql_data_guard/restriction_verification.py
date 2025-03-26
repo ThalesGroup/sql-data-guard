@@ -164,7 +164,6 @@ def _verify_restriction(
             int(val) for val in restriction["values"]
         ]  # Extract allowed values
 
-        # ✅ At least one value in expr_values must be in restriction_values
         return any(v in restriction_values for v in expr_values)
 
     return False
