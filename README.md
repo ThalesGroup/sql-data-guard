@@ -128,4 +128,4 @@ curl -X POST http://localhost:5000/verify-sql \
 We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ## License
-This project is licensed under the MIT License. See the [LICENSE.md](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE.md](LICENSE.md) file for details.
