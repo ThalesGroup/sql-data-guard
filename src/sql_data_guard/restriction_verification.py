@@ -110,8 +110,7 @@ def _verify_restriction(
     Returns:
         bool: True if the restriction is satisfied, False otherwise.
     """
-    if isinstance(exp, expr.Not):
-        return False
+
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
     if not isinstance(exp.this, expr.Column):
@@ -128,13 +127,76 @@ def _verify_restriction(
         else:
             values = _get_restriction_values(restriction)
             return exp.right.this in values
+
+    # Check if the expression is a BETWEEN condition (e.g., price BETWEEN 80 AND 150)
     if isinstance(exp, expr.Between):
-        sql_values = [v.this for v in exp.expressions]
-        values = _get_restriction_values(restriction)
-        return any(v in values for v in sql_values)
+        low = int(exp.args["low"].this)  # Extract the lower bound
+        high = int(exp.args["high"].this)  # Extract the upper bound
+        restriction_low, restriction_high = map(
+            int, restriction["values"]
+        )  # Get allowed range from restriction
+        # Return True only if the given range is within the allowed range
+        return restriction_low <= low and high <= restriction_high
+
+        # Check if the expression is a NOT BETWEEN condition (e.g., price NOT BETWEEN 80 AND 150)
+    if isinstance(exp, expr.Not) and isinstance(exp.this, expr.Between):
+        low = int(exp.this.args["low"].this)  # Extract lower bound
+        high = int(exp.this.args["high"].this)  # Extract upper bound
+        restriction_low, restriction_high = map(
+            int, restriction["values"]
+        )  # Convert to int
+        # NOT BETWEEN should be valid if the range is completely outside the restriction
+        # Ensures it's fully outside
+        return (
+            low < restriction_low or high > restriction_high
+        )  # Ensures it's fully outside the allowed range
+
+    # Check if the expression is a LESS THAN condition (e.g., price < 100)
+    if isinstance(exp, expr.LT):
+        if (
+            exp.this.name == restriction["column"]
+        ):  # Ensure it's checking the correct column
+            value = int(exp.expression.this)  # Extract the number after '<'
+
+            if "values" in restriction:  # If a range is given (e.g., [80, 150])
+                restriction_low, restriction_high = map(int, restriction["values"])
+                return (
+                    restriction_low <= value
+                )  # Ensure the value is above the lower bound
+            else:
+                restriction_value = int(
+                    restriction["value"]
+                )  # If only a single value exists
+                return value < restriction_value  # Ensure value is less than allowed
+
+    # Check if the expression is a GREATER THAN condition (e.g., price > 100)
+    # Also handles AVG(price) > X conditions
+    if isinstance(exp, expr.GT) or (
+        isinstance(exp, expr.GT) and isinstance(exp.this, expr.Avg)
+    ):
+        if exp.this.name == restriction["column"] or (
+            isinstance(exp.this, expr.Avg)
+            and exp.this.this.name == restriction["column"]
+        ):
+            value = int(exp.expression.this)  # Extract the number after '>'
+
+            if "values" in restriction:  # If a range is given (e.g., [80, 150])
+                restriction_low, restriction_high = map(int, restriction["values"])
+                return (
+                    restriction_low <= value <= restriction_high
+                )  # Ensure value is within range
+            else:
+                restriction_value = int(
+                    restriction["value"]
+                )  # If only a single value exists
+                return value > restriction_value  # Ensure value is greater than allowed
+
+    # Check if the expression is an IN condition (e.g., price IN (100, 120, 150))
     if isinstance(exp, expr.In):
-        values = [v.this for v in exp.expressions]
-        return False
+        values = [v.this for v in exp.expressions]  # Extract values inside IN
+        return False  # This case is not handled, so return False
+
+    #  If no condition matches, return False
     return False
 
 
