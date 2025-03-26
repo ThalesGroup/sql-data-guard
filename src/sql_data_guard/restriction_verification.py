@@ -70,7 +70,7 @@ def _create_new_condition(
     """
     if restriction.get("operation") == "BETWEEN":
         operator = "BETWEEN"
-        operand = f"{_format_value(restriction['values'][0])} AND {_format_value(restriction['values'][1])}"
+        operand = f"{_format_value(restriction["values"][0])} AND {_format_value(restriction["values"][1])}"
     elif restriction.get("operation") == "IN":
         operator = "IN"
         values = restriction.get("values", [restriction.get("value")])
@@ -145,19 +145,71 @@ def _verify_restriction(
         else:
             values = _get_restriction_values(restriction)
             return exp.right.this in values
+
+    # Check if the expression is a BETWEEN condition (e.g., price BETWEEN 80 AND 150)
     if isinstance(exp, expr.Between):
-        low = exp.args["low"].this
-        high = exp.args["high"].this
-        restriction_low = restriction["values"][0]
-        restriction_high = restriction["values"][1]
-        low, high = int(low), int(high)
-        restriction_low, restriction_high = int(restriction_low), int(restriction_high)
+        low = int(exp.args["low"].this)  # Extract the lower bound
+        high = int(exp.args["high"].this)  # Extract the upper bound
+        restriction_low, restriction_high = map(
+            int, restriction["values"]
+        )  # Get allowed range from restriction
+        # Return True only if the given range is within the allowed range
+        return restriction_low <= low and high <= restriction_high
 
-        # If NOT BETWEEN, it should return False
-        if isinstance(exp.parent, expr.Not):
-            return False
+        # Check if the expression is a NOT BETWEEN condition (e.g., price NOT BETWEEN 80 AND 150)
+    if isinstance(exp, expr.Not) and isinstance(exp.this, expr.Between):
+        low = int(exp.this.args["low"].this)  # Extract lower bound
+        high = int(exp.this.args["high"].this)  # Extract upper bound
+        restriction_low, restriction_high = map(
+            int, restriction["values"]
+        )  # Convert to int
+        # NOT BETWEEN should be valid if the range is completely outside the restriction
+        # Ensures it's fully outside
+        return (
+            low < restriction_low or high > restriction_high
+        )  # Ensures it's fully outside the allowed range
 
-        return low == restriction_low and high == restriction_high
+    # Check if the expression is a LESS THAN condition (e.g., price < 100)
+    if isinstance(exp, expr.LT):
+        if (
+            exp.this.name == restriction["column"]
+        ):  # Ensure it's checking the correct column
+            value = int(exp.expression.this)  # Extract the number after '<'
+
+            if "values" in restriction:  # If a range is given (e.g., [80, 150])
+                restriction_low, restriction_high = map(int, restriction["values"])
+                return (
+                    restriction_low <= value
+                )  # Ensure the value is above the lower bound
+            else:
+                restriction_value = int(
+                    restriction["value"]
+                )  # If only a single value exists
+                return value < restriction_value  # Ensure value is less than allowed
+
+    # Check if the expression is a GREATER THAN condition (e.g., price > 100)
+    # Also handles AVG(price) > X conditions
+    if isinstance(exp, expr.GT) or (
+        isinstance(exp, expr.GT) and isinstance(exp.this, expr.Avg)
+    ):
+        if exp.this.name == restriction["column"] or (
+            isinstance(exp.this, expr.Avg)
+            and exp.this.this.name == restriction["column"]
+        ):
+            value = int(exp.expression.this)  # Extract the number after '>'
+
+            if "values" in restriction:  # If a range is given (e.g., [80, 150])
+                restriction_low, restriction_high = map(int, restriction["values"])
+                return (
+                    restriction_low <= value <= restriction_high
+                )  # Ensure value is within range
+            else:
+                restriction_value = int(
+                    restriction["value"]
+                )  # If only a single value exists
+                return value > restriction_value  # Ensure value is greater than allowed
+
+    # Check if the expression is an IN condition (e.g., price IN (100, 120, 150))
     if isinstance(exp, expr.In):
         expr_values = [int(val.this) for val in exp.expressions]  # Extract SQL values
         restriction_values = [
