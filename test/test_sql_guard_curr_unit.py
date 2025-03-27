@@ -3,7 +3,6 @@ import os
 import sqlite3
 from sqlite3 import Connection
 from typing import Set, Generator
-
 import pytest
 from sql_data_guard import verify_sql
 from conftest import verify_sql_test
@@ -176,7 +175,7 @@ class TestSQLJoins:
             cnn=cnn,
             data=[
                 {
-                    "Product2",  # Product2 has price = 100
+                    "Product2",
                 },
                 {
                     "Product4",  # Product4 has price = 100
@@ -568,7 +567,7 @@ class TestSQLOrderDateBetweenRestrictions:
             "SELECT prod_name, price FROM products WHERE price < 90",
             config,
             cnn=cnn,
-            data=[("Product B", 80), ("Product D", 60.0)],
+            data=[("Product B", 80), ("Product D", 60)],
         )
 
     def test_price_between_and_category_restriction(self, cnn, config):

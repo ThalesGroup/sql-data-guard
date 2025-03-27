@@ -110,14 +110,8 @@ def _verify_restriction(
     Returns:
         bool: True if the restriction is satisfied, False otherwise.
     """
-    if isinstance(exp, expr.Not) and isinstance(exp.this, expr.In):
-        expr_values = [int(val.this) for val in exp.this.expressions]  # Convert to int
-        restriction_values = [
-            int(val) for val in restriction["values"]
-        ]  # Convert to int
-
-        # NOT IN should be valid if it only excludes values in the restriction
-        return all(val in restriction_values for val in expr_values)
+    if isinstance(exp, expr.Not):
+        return False
 
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
@@ -159,47 +153,7 @@ def _verify_restriction(
             low < restriction_low or high > restriction_high
         )  # Ensures it's fully outside the allowed range
 
-    # Check if the expression is a LESS THAN condition (e.g., price < 100)
-    if isinstance(exp, expr.LT):
-        if (
-            exp.this.name == restriction["column"]
-        ):  # Ensure it's checking the correct column
-            value = int(exp.expression.this)  # Extract the number after '<'
-
-            if "values" in restriction:  # If a range is given (e.g., [80, 150])
-                restriction_low, restriction_high = map(int, restriction["values"])
-                return (
-                    restriction_low <= value
-                )  # Ensure the value is above the lower bound
-            else:
-                restriction_value = int(
-                    restriction["value"]
-                )  # If only a single value exists
-                return value < restriction_value  # Ensure value is less than allowed
-
-    # Check if the expression is a GREATER THAN condition (e.g., price > 100)
-    # Also handles AVG(price) > X conditions
-    if isinstance(exp, expr.GT) or (
-        isinstance(exp, expr.GT) and isinstance(exp.this, expr.Avg)
-    ):
-        if exp.this.name == restriction["column"] or (
-            isinstance(exp.this, expr.Avg)
-            and exp.this.this.name == restriction["column"]
-        ):
-            value = int(exp.expression.this)  # Extract the number after '>'
-
-            if "values" in restriction:  # If a range is given (e.g., [80, 150])
-                restriction_low, restriction_high = map(int, restriction["values"])
-                return (
-                    restriction_low <= value <= restriction_high
-                )  # Ensure value is within range
-            else:
-                restriction_value = int(
-                    restriction["value"]
-                )  # If only a single value exists
-                return value > restriction_value  # Ensure value is greater than allowed
-
-    # Check if the expression is an IN condition (e.g., price IN (100, 120, 150))
+        # Check if the expression is an IN condition (e.g., price IN (100, 120, 150))
     if isinstance(exp, expr.In):
         expr_values = [int(val.this) for val in exp.expressions]  # Extract SQL values
         restriction_values = [
@@ -208,7 +162,50 @@ def _verify_restriction(
 
         return any(v in restriction_values for v in expr_values)
 
-    return False
+    def check_comparison_operator(exp1, restriction_, operator):
+        """Handles LT (<), GT (>), LTE (<=), and GTE (>=) conditions."""
+        if not isinstance(exp1, operator):
+            return False
+
+        column_name = (
+            exp1.this.name
+            if not isinstance(exp1.this, expr.Avg)
+            else exp1.this.this.name
+        )
+
+        # Ensure it's checking the correct column
+        if column_name != restriction_["column"]:
+            return False
+
+        value = int(exp1.expression.this)  # Extract the number after the operator
+
+        if "values" in restriction_:  # If a range is given (e.g., [80, 150])
+            low_restriction, high_restriction = map(int, restriction_["values"])
+            if operator in [expr.GT, expr.GTE]:
+                return low_restriction <= value <= high_restriction
+            return low_restriction <= value  # For LT, LTE
+
+        else:  # If only a single value exists
+            restriction_value = int(restriction_["value"])
+            return {
+                expr.GT: value > restriction_value,
+                expr.GTE: value >= restriction_value,
+                expr.LT: value < restriction_value,
+                expr.LTE: value <= restriction_value,
+            }[
+                operator
+            ]  # Direct lookup, avoids unnecessary `.get(operator, False)`
+
+    # Apply the function to different comparison operators
+    if any(
+        check_comparison_operator(exp, restriction, op)
+        for op in [expr.LT, expr.GT, expr.LTE, expr.GTE]
+    ):
+        result = True  # Assign instead of `return` inside a loop
+    else:
+        result = False  # Assign explicitly
+
+    return result  # Single return statement outside the loop
 
 
 def _get_restriction_values(restriction: dict) -> List[str]:

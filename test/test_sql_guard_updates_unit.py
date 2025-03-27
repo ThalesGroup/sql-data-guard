@@ -724,14 +724,6 @@ class TestMultipleRestriction:
             ],
         )
 
-    def test_not_in_operator(self, config, cnn):
-        verify_sql_test(
-            """SELECT id FROM products1 WHERE id NOT IN (324, 224)""",
-            config,
-            cnn=cnn,
-            data=[("325",), ("435",), ("445",)],
-        )
-
     def test_in_operator_with_numeric_values(self, config, cnn):
         verify_sql_test(
             """SELECT id FROM products2 WHERE id IN (324, 224) AND category IN ('electronics', 'furniture')""",
