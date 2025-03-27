@@ -110,14 +110,8 @@ def _verify_restriction(
     Returns:
         bool: True if the restriction is satisfied, False otherwise.
     """
-    if isinstance(exp, expr.Not) and isinstance(exp.this, expr.In):
-        expr_values = [int(val.this) for val in exp.this.expressions]  # Convert to int
-        restriction_values = [
-            int(val) for val in restriction["values"]
-        ]  # Convert to int
-
-        # NOT IN should be valid if it only excludes values in the restriction
-        return all(val in restriction_values for val in expr_values)
+    if isinstance(exp, expr.Not):
+        return False
 
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)

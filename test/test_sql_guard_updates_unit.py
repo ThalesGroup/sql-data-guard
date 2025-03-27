@@ -728,8 +728,12 @@ class TestMultipleRestriction:
         verify_sql_test(
             """SELECT id FROM products1 WHERE id NOT IN (324, 224)""",
             config,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE (NOT id IN (324, 224)) AND id IN (324, 224)",
             cnn=cnn,
-            data=[("325",), ("435",), ("445",)],
+            data=[],
         )
 
     def test_in_operator_with_numeric_values(self, config, cnn):
