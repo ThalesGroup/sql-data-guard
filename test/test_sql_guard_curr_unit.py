@@ -24,7 +24,7 @@ class TestSQLJoins:
                             "column": "price",
                             "value": 100,
                             "operation": ">=",
-                        }  # Restriction on price column
+                        }
                     ],
                 },
                 {

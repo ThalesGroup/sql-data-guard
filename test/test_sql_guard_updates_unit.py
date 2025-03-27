@@ -28,7 +28,7 @@ class TestInvalidQueries:
             )"""
             )
 
-            # Insert values into products1 table
+            # Insert values into products1
             conn.execute(
                 "INSERT INTO products1 VALUES (324, 'prod1', 'delivered', 'granted', '27-02-2025', 'c1')"
             )
