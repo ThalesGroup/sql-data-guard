@@ -77,6 +77,10 @@ def _verify_where_clause(
     select_statement: expr.Query,
     from_tables: List[expr.Table],
 ):
+    where_clause = select_statement.find(expr.Where)
+    if where_clause:
+        for sub in where_clause.find_all(expr.Subquery):
+            _verify_query_statement(sub.this, context)
     _verify_static_expression(select_statement, context)
     verify_restrictions(select_statement, context, from_tables)
 
@@ -124,10 +128,6 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
 
 
 def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
-    for select in query_statement.selects:
-        for sub in select.find_all(expr.Subquery):
-            _add_table_alias(sub, context)
-            _verify_query_statement(sub.this, context)
     if isinstance(query_statement, expr.Union):
         _verify_query_statement(query_statement.left, context)
         _verify_query_statement(query_statement.right, context)
@@ -135,10 +135,16 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
     for cte in query_statement.ctes:
         _add_table_alias(cte, context)
         _verify_query_statement(cte.this, context)
-    where_clause = query_statement.find(expr.Where)
-    if where_clause:
-        for sub in where_clause.find_all(expr.Subquery):
-            _verify_query_statement(sub.this, context)
+    from_tables = _verify_from_tables(context, query_statement)
+    if not context.can_fix:
+        return query_statement
+    _verify_select_clause(context, query_statement, from_tables)
+    _verify_where_clause(context, query_statement, from_tables)
+    _verify_order_by_clause(context, query_statement)
+    return query_statement
+
+
+def _verify_from_tables(context, query_statement):
     from_tables = _get_from_clause_tables(query_statement, context)
     for t in from_tables:
         found = False
@@ -147,11 +153,13 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
                 found = True
         if not found:
             context.add_error(f"Table {t.name} is not allowed", False, 1)
-    if not context.can_fix:
-        return query_statement
-    _verify_select_clause(context, query_statement, from_tables)
-    _verify_where_clause(context, query_statement, from_tables)
-    return query_statement
+    return from_tables
+
+
+def _verify_order_by_clause(context, query_statement):
+    for order_by in find_direct(query_statement, expr.Order):
+        for sub in order_by.find_all(expr.Subquery):
+            _verify_query_statement(sub.this, context)
 
 
 def _verify_select_clause(
@@ -159,6 +167,10 @@ def _verify_select_clause(
     select_clause: expr.Query,
     from_tables: List[expr.Table],
 ):
+    for select in select_clause.selects:
+        for sub in select.find_all(expr.Subquery):
+            _add_table_alias(sub, context)
+            _verify_query_statement(sub.this, context)
     to_remove = []
     for e in select_clause.expressions:
         if not _verify_select_clause_element(from_tables, context, e):
