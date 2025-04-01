@@ -628,3 +628,76 @@ class TestSQLOrderDateBetweenRestrictions:
             cnn=cnn,
             data=[("CategoryA", 120)],  # Products in CategoryA with price > 100
         )
+
+
+class TestSQLOrderRestrictions:
+
+    @pytest.fixture(scope="class")
+    def cnn(self):
+        with sqlite3.connect(":memory:") as conn:
+            # Create orders table
+            conn.execute(
+                """
+                CREATE TABLE orders (
+                    id INTEGER, 
+                    product_name TEXT, 
+                    account_id INTEGER
+                )"""
+            )
+
+            # Insert sample data into orders table
+
+            conn.execute(
+                """INSERT INTO orders (id, product_name, account_id) 
+                VALUES 
+                (1, 'Product A', 123),
+                (2, 'Product B', 124), 
+                (3, "Product C", 125) 
+                """
+            )
+
+            yield conn
+
+    @pytest.fixture(scope="class")
+    def config(self):
+        # Assuming self._ALLOWED_ACCOUNT_ID is defined
+        self._ALLOWED_ACCOUNT_ID = 124  # Example value for the allowed account ID
+        self._TABLE_NAME = "orders"  # Define table name
+
+        return {
+            "tables": [
+                {
+                    "table_name": self._TABLE_NAME,
+                    "columns": ["id", "product_name", "account_id"],
+                    "restrictions": [
+                        {
+                            "column": "account_id",
+                            "value": [
+                                self._ALLOWED_ACCOUNT_ID,
+                            ],
+                        }  # Restriction without IN
+                    ],
+                }
+            ]
+        }
+
+    def test_in_operator_with_restriction_(self, config, cnn):
+        sql = """SELECT product_name FROM orders WHERE account_id IN (123, 124, 125)"""
+
+        # Modify the config to handle "value" as "values" just for this specific test case
+        for table in config["tables"]:
+            for restriction in table["restrictions"]:
+                if "value" in restriction:
+                    # If 'value' is present, convert it to 'values'
+                    restriction["values"] = restriction["value"]
+                    del restriction["value"]  # Remove 'value' key
+
+        # Run the verify_sql_test function with the defined SQL query and configuration
+        verify_sql_test(
+            sql,
+            config,
+            errors=set(),  # No errors expected as the restriction matches the IN clause
+            fix=None,  # No fix should be needed
+            cnn=cnn,
+            data=[("Product A",), ("Product B",), ("Product C",)],
+        )

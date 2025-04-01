@@ -103,65 +103,47 @@ def _verify_restriction(
     Verifies if a given restriction is satisfied within an SQL expression.
 
     Args:
-        restriction (dict): The restriction to verify, containing 'column' and 'value' keys.
+        restriction (dict): The restriction to verify, containing 'column' and 'value' or 'values'.
         from_table (Table): The table reference to check the restriction against.
-        exp (list): The SQL expression to check against the restriction.
+        exp (Expression): The SQL expression to check against the restriction.
 
     Returns:
         bool: True if the restriction is satisfied, False otherwise.
     """
+
     if isinstance(exp, expr.Not):
         return False
 
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
-    if not isinstance(exp.this, expr.Column):
+
+    if not isinstance(exp.this, expr.Column) or exp.this.name != restriction["column"]:
         return False
-    if not exp.this.name == restriction["column"]:
-        return False
+
     if exp.this.table and from_table.alias and exp.this.table != from_table.alias:
         return False
     if exp.this.table and not from_table.alias and exp.this.table != from_table.name:
         return False
-    if isinstance(exp, expr.EQ) and isinstance(exp.right, expr.Condition):
-        if isinstance(exp.right, expr.Boolean):
-            return exp.right.this == restriction["value"]
-        else:
-            values = _get_restriction_values(restriction)
-            return exp.right.this in values
 
-    # Check if the expression is a BETWEEN condition
-    if isinstance(exp, expr.Between):
-        low = int(exp.args["low"].this)  # Extract the lower bound
-        high = int(exp.args["high"].this)  # Extract the upper bound
-        restriction_low, restriction_high = map(
-            int, restriction["values"]
-        )  # Get allowed range from restriction
-        # Return True only if the given range is within the allowed range
-        return restriction_low <= low and high <= restriction_high
+    values = _get_restriction_values(restriction)  # Get correct restriction values
 
-        # Check if the expression is a NOT BETWEEN condition (e.g., price NOT BETWEEN 80 AND 150)
-    if isinstance(exp, expr.Not) and isinstance(exp.this, expr.Between):
-        low = int(exp.this.args["low"].this)  # Extract lower bound
-        high = int(exp.this.args["high"].this)  # Extract upper bound
-        restriction_low, restriction_high = map(
-            int, restriction["values"]
-        )  # Convert to int
-        # NOT BETWEEN should be valid if the range is completely outside the restriction
-        # Ensures it's fully outside
-        return (
-            low < restriction_low or high > restriction_high
-        )  # Ensures it's fully outside the allowed range
-
-        # Check if the expression is an IN condition (e.g., price IN (100, 120, 150))
+    # Handle IN condition correctly
     if isinstance(exp, expr.In):
-        expr_values = [int(val.this) for val in exp.expressions]  # Extract SQL values
-        restriction_values = [
-            int(val) for val in restriction["values"]
-        ]  # Extract allowed values
+        expr_values = [str(val.this) for val in exp.expressions]
+        return any(v in values for v in expr_values)
 
-        return any(v in restriction_values for v in expr_values)
+    # Handle EQ (=) condition
+    if isinstance(exp, expr.EQ) and isinstance(exp.right, expr.Condition):
+        return str(exp.right.this) in values
 
+    # Handle BETWEEN conditions correctly
+    if isinstance(exp, expr.Between):
+        low, high = int(exp.args["low"].this), int(exp.args["high"].this)
+        if len(values) == 2:  # Ensure we have exactly two values
+            restriction_low, restriction_high = map(int, values)
+            return restriction_low <= low and high <= restriction_high
+
+    # Handle comparison operators (<, >, <=, >=)
     def check_comparison_operator(exp1, restriction_, operator):
         """Handles LT (<), GT (>), LTE (<=), and GTE (>=) conditions."""
         if not isinstance(exp1, operator):
@@ -179,33 +161,30 @@ def _verify_restriction(
 
         value = int(exp1.expression.this)  # Extract the number after the operator
 
-        if "values" in restriction_:  # If a range is given (e.g., [80, 150])
-            low_restriction, high_restriction = map(int, restriction_["values"])
+        if len(values) == 2:  # If a range is given (e.g., [80, 150])
+            low_restriction, high_restriction = map(int, values)
             if operator in [expr.GT, expr.GTE]:
                 return low_restriction <= value <= high_restriction
             return low_restriction <= value  # For LT, LTE
 
-        else:  # If only a single value exists
-            restriction_value = int(restriction_["value"])
+        elif len(values) == 1:  # If only a single value exists
+            restriction_value = int(values[0])
             return {
                 expr.GT: value > restriction_value,
                 expr.GTE: value >= restriction_value,
                 expr.LT: value < restriction_value,
                 expr.LTE: value <= restriction_value,
-            }[
-                operator
-            ]  # Direct lookup, avoids unnecessary `.get(operator, False)`
+            }[operator]
 
-    # Apply the function to different comparison operators
+        return False  # Default case
+
     if any(
         check_comparison_operator(exp, restriction, op)
         for op in [expr.LT, expr.GT, expr.LTE, expr.GTE]
     ):
-        result = True  # Assign instead of `return` inside a loop
-    else:
-        result = False  # Assign explicitly
+        return True
 
-    return result  # Single return statement outside the loop
+    return False
 
 
 def _get_restriction_values(restriction: dict) -> List[str]:
