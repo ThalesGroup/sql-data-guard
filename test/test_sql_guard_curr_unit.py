@@ -644,7 +644,6 @@ class TestSQLOrderRestrictions:
                     account_id INTEGER
                 )"""
             )
-
             # Insert sample data into orders table
 
             conn.execute(
@@ -675,7 +674,7 @@ class TestSQLOrderRestrictions:
                             "value": [
                                 self._ALLOWED_ACCOUNT_ID,
                             ],
-                        }  # Restriction without IN
+                        },  # Restriction without IN
                     ],
                 }
             ]
@@ -700,4 +699,29 @@ class TestSQLOrderRestrictions:
             fix=None,  # No fix should be needed
             cnn=cnn,
             data=[("Product A",), ("Product B",), ("Product C",)],
+        )
+
+    def test_id_greater_than_122_should_return_error(self, config):
+        """Test case for ensuring that queries with id >= 123 are invalid"""
+
+        # SQL query to test
+        sql_query = "SELECT id, product_name FROM orders WHERE id >= 123"
+
+        # Run the verify_sql_test function to validate the query against the restrictions
+        res = verify_sql(sql_query, config)
+
+        # Assert that the query is not allowed (should return an error)
+        assert res["allowed"] is False, res
+
+    def test_id_greater_return_error(self, config, cnn):
+
+        verify_sql_test(
+            "SELECT id, product_name FROM orders WHERE id >= 123",
+            config,
+            cnn=cnn,
+            errors={
+                "Missing restriction for table: orders column: account_id value: [124]"
+            },
+            fix="SELECT id, product_name FROM orders WHERE (id >= 123) AND account_id = 124",
+            data=[],
         )
