@@ -136,54 +136,28 @@ def _verify_restriction(
     if isinstance(exp, expr.EQ) and isinstance(exp.right, expr.Condition):
         return str(exp.right.this) in values
 
-    # Handle BETWEEN conditions correctly
     if isinstance(exp, expr.Between):
         low, high = int(exp.args["low"].this), int(exp.args["high"].this)
         if len(values) == 2:  # Ensure we have exactly two values
             restriction_low, restriction_high = map(int, values)
             return restriction_low <= low and high <= restriction_high
 
-    # Handle comparison operators (<, >, <=, >=)
-    def check_comparison_operator(exp1, restriction_, operator):
-        """Handles LT (<), GT (>), LTE (<=), and GTE (>=) conditions."""
-        if not isinstance(exp1, operator):
-            return False
-
-        column_name = (
-            exp1.this.name
-            if not isinstance(exp1.this, expr.Avg)
-            else exp1.this.this.name
-        )
-
-        # Ensure it's checking the correct column
-        if column_name != restriction_["column"]:
-            return False
-
-        value = int(exp1.expression.this)  # Extract the number after the operator
-
-        if len(values) == 2:  # If a range is given (e.g., [80, 150])
-            low_restriction, high_restriction = map(int, values)
-            if operator in [expr.GT, expr.GTE]:
-                return low_restriction <= value <= high_restriction
-            return low_restriction <= value  # For LT, LTE
-
-        elif len(values) == 1:  # If only a single value exists
-            restriction_value = int(values[0])
-            return {
-                expr.GT: value > restriction_value,
-                expr.GTE: value >= restriction_value,
-                expr.LT: value < restriction_value,
-                expr.LTE: value <= restriction_value,
-            }[operator]
-
-        return False  # Default case
-
-    if any(
-        check_comparison_operator(exp, restriction, op)
-        for op in [expr.LT, expr.GT, expr.LTE, expr.GTE]
+    if isinstance(exp, (expr.LT, expr.LTE, expr.GT, expr.GTE)) and isinstance(
+        exp.right, expr.Condition
     ):
-        return True
-
+        if restriction.get("operation") not in [">=", ">", "<=", "<"]:
+            return False
+        assert len(values) == 1
+        if isinstance(exp, expr.LT) and restriction["operation"] == "<":
+            return str(exp.right.this) < values[0]
+        elif isinstance(exp, expr.LTE) and restriction["operation"] == "<=":
+            return str(exp.right.this) <= values[0]
+        elif isinstance(exp, expr.GT) and restriction["operation"] == ">":
+            return str(exp.right.this) > values[0]
+        elif isinstance(exp, expr.GTE) and restriction["operation"] == ">=":
+            return str(exp.right.this) >= values[0]
+        else:
+            return False
     return False
 
 

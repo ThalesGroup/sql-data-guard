@@ -567,7 +567,11 @@ class TestSQLOrderDateBetweenRestrictions:
             "SELECT prod_name, price FROM products WHERE price < 90",
             config,
             cnn=cnn,
-            data=[("Product B", 80), ("Product D", 60)],
+            errors={
+                "Missing restriction for table: products column: price value: [80, 150]"
+            },
+            fix="SELECT prod_name, price FROM products WHERE (price < 90) AND price BETWEEN 80 AND 150",
+            data=[("Product B", 80)],
         )
 
     def test_price_between_and_category_restriction(self, cnn, config):
@@ -625,6 +629,8 @@ class TestSQLOrderDateBetweenRestrictions:
             "WHERE price > 100 "
             "GROUP BY prod_category",
             config,
+            {"Missing restriction for table: products column: price value: [80, 150]"},
+            "SELECT prod_category, price FROM products WHERE (price > 100) AND price BETWEEN 80 AND 150 GROUP BY prod_category",
             cnn=cnn,
             data=[("CategoryA", 120)],  # Products in CategoryA with price > 100
         )
