@@ -157,9 +157,10 @@ def _verify_from_tables(context, query_statement):
 
 
 def _verify_order_by_clause(context, query_statement):
-    for order_by in find_direct(query_statement, expr.Order):
-        for sub in order_by.find_all(expr.Subquery):
-            _verify_query_statement(sub.this, context)
+    for exp_type in [expr.Order, expr.Offset]:
+        for exp in find_direct(query_statement, exp_type):
+            for sub in exp.find_all(expr.Subquery):
+                _verify_query_statement(sub.this, context)
 
 
 def _verify_select_clause(
