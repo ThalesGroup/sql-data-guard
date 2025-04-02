@@ -714,15 +714,14 @@ class TestSQLOrderRestrictions:
         assert res["allowed"] is False, res
 
     def test_id_greater_return_error(self, config, cnn):
-        sql_query = "SELECT id, product_name FROM orders WHERE id >= 123"
 
         verify_sql_test(
-            sql_query,
+            "SELECT id, product_name FROM orders WHERE id >= 123",
             config,
             cnn=cnn,
             errors={
                 "Missing restriction for table: orders column: account_id value: [124]"
             },
-            fix='SELECT id, product_name FROM orders WHERE (id >= 123) AND account_id = "124"',
+            fix="SELECT id, product_name FROM orders WHERE (id >= 123) AND account_id = 124",
             data=[],
         )
