@@ -84,3 +84,5 @@
 {"name": "offset", "sql": "SELECT id FROM orders WHERE id = 123 LIMIT 1 OFFSET 0", "data": [[123]]}
 {"name": "offset_missing_restriction", "sql": "SELECT id FROM orders WHERE id = 123 LIMIT 1 OFFSET (SELECT 0 FROM orders LIMIT 1)", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE id = 123 LIMIT 1 OFFSET (SELECT 0 FROM orders WHERE id = 123 LIMIT 1)", "data": [[123]]}
 {"name": "greater_equals", "sql": "SELECT id FROM orders WHERE id >= 123", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (id >= 123) AND id = 123", "data": [[123]]}
+{"name": "in_clause", "sql": "SELECT id FROM orders WHERE id IN (123)", "data": [[123]]}
+{"name": "in_clause_not_allowed_ids", "sql": "SELECT id FROM orders WHERE id IN (123, 124)", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (id IN (123, 124)) AND id = 123", "data": [[123]]}

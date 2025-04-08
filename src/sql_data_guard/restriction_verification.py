@@ -130,7 +130,7 @@ def _verify_restriction(
     # Handle IN condition correctly
     if isinstance(exp, expr.In):
         expr_values = [str(val.this) for val in exp.expressions]
-        return any(v in values for v in expr_values)
+        return all(v in values for v in expr_values)
 
     # Handle EQ (=) condition
     if isinstance(exp, expr.EQ) and isinstance(exp.right, expr.Condition):

@@ -705,6 +705,10 @@ class TestMultipleRestriction:
         verify_sql_test(
             """SELECT id FROM products1 WHERE id IN (324, 233)""",
             config,
+            errors={
+                "Missing restriction for table: products1 column: id value: [324, 224]"
+            },
+            fix="SELECT id FROM products1 WHERE (id IN (324, 233)) AND id IN (324, 224)",
             cnn=cnn,
             data=[["324"]],
         )

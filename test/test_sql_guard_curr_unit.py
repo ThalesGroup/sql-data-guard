@@ -701,10 +701,12 @@ class TestSQLOrderRestrictions:
         verify_sql_test(
             sql,
             config,
-            errors=set(),  # No errors expected as the restriction matches the IN clause
-            fix=None,  # No fix should be needed
+            errors={
+                "Missing restriction for table: orders column: account_id value: [124]"
+            },
+            fix="SELECT product_name FROM orders WHERE (account_id IN (123, 124, 125)) AND account_id = 124",
             cnn=cnn,
-            data=[("Product A",), ("Product B",), ("Product C",)],
+            data=[("Product B",)],
         )
 
     def test_id_greater_than_122_should_return_error(self, config):
