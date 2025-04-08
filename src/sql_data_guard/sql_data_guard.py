@@ -85,13 +85,6 @@ def _verify_where_clause(
     verify_restrictions(select_statement, context, from_tables)
 
 
-def _verify_having_clause(context: VerificationContext, select_statement: expr.Query):
-    having_clause = select_statement.find(expr.Having)
-    if having_clause:
-        for sub in having_clause.find_all(expr.Subquery):
-            _verify_query_statement(sub.this, context)
-
-
 def _verify_static_expression(
     select_statement: expr.Query, context: VerificationContext
 ) -> bool:
@@ -147,8 +140,7 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
         return query_statement
     _verify_select_clause(context, query_statement, from_tables)
     _verify_where_clause(context, query_statement, from_tables)
-    _verify_having_clause(context, query_statement)
-    _verify_order_by_clause(context, query_statement)
+    _verify_sub_queries(context, query_statement)
     return query_statement
 
 
@@ -164,11 +156,12 @@ def _verify_from_tables(context, query_statement):
     return from_tables
 
 
-def _verify_order_by_clause(context, query_statement):
-    for exp_type in [expr.Order, expr.Offset]:
+def _verify_sub_queries(context, query_statement):
+    for exp_type in [expr.Order, expr.Offset, expr.Limit, expr.Group, expr.Having]:
         for exp in find_direct(query_statement, exp_type):
-            for sub in exp.find_all(expr.Subquery):
-                _verify_query_statement(sub.this, context)
+            if exp:
+                for sub in exp.find_all(expr.Subquery):
+                    _verify_query_statement(sub.this, context)
 
 
 def _verify_select_clause(
