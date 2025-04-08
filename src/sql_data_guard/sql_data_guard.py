@@ -79,7 +79,7 @@ def _verify_where_clause(
 ):
     where_clause = select_statement.find(expr.Where)
     if where_clause:
-        for sub in where_clause.find_all(expr.Subquery):
+        for sub in where_clause.find_all(expr.Subquery, expr.Exists):
             _verify_query_statement(sub.this, context)
     _verify_static_expression(select_statement, context)
     verify_restrictions(select_statement, context, from_tables)
