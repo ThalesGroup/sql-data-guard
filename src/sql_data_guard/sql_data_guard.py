@@ -136,12 +136,10 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
         _add_table_alias(cte, context)
         _verify_query_statement(cte.this, context)
     from_tables = _verify_from_tables(context, query_statement)
-    if not context.can_fix:
-        return query_statement
-    _verify_select_clause(context, query_statement, from_tables)
-    _verify_where_clause(context, query_statement, from_tables)
-    _verify_sub_queries(context, query_statement)
-    return query_statement
+    if context.can_fix:
+        _verify_select_clause(context, query_statement, from_tables)
+        _verify_where_clause(context, query_statement, from_tables)
+        _verify_sub_queries(context, query_statement)
 
 
 def _verify_from_tables(context, query_statement):
@@ -290,6 +288,8 @@ def _get_from_clause_tables(
 def _add_table_alias(exp: expr.Expression, context: VerificationContext):
     for table_alias in find_direct(exp, expr.TableAlias):
         if isinstance(table_alias, expr.TableAlias):
-            context.dynamic_tables[table_alias.alias_or_name] = {
-                col.alias_or_name for col in table_alias.columns
-            }
+            if len(table_alias.columns) > 0:
+                column_names = {col.alias_or_name for col in table_alias.columns}
+            else:
+                column_names = {c for c in exp.this.named_selects}
+            context.dynamic_tables[table_alias.alias_or_name] = column_names

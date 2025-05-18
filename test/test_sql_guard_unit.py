@@ -6,8 +6,8 @@ from typing import Generator
 
 import pytest
 
+from conftest import verify_sql_test
 from sql_data_guard import verify_sql
-from conftest import verify_sql_test, verify_sql_test_data
 
 
 def _get_resource(file_name: str) -> str:
@@ -351,6 +351,32 @@ class TestTrino:
             "SELECT val FROM highlights CROSS JOIN UNNEST(vals) AS t(val)",
             config,
             dialect="trino",
+        )
+
+
+class TestTrinoWithRestrictions:
+    @pytest.fixture(scope="class")
+    def config(self) -> dict:
+        return {
+            "tables": [
+                {
+                    "table_name": "accounts",
+                    "columns": ["id", "day", "product_name"],
+                    "restrictions": [
+                        {"column": "id", "value": 123},
+                    ],
+                }
+            ]
+        }
+
+    @pytest.mark.skip(reason="Bug in sqlglot. Waiting for fix")
+    def test_date_add(self, config):
+        verify_sql_test(
+            "SELECT id FROM accounts WHERE DATE(day) >= DATE_ADD('day', -7, CURRENT_DATE)",
+            config,
+            dialect="trino",
+            errors={"Missing restriction for table: accounts column: id value: 123"},
+            fix="SELECT id FROM accounts WHERE DATE(day) >= DATE_ADD('day', -7, CURRENT_DATE) AND id = 123",
         )
 
 

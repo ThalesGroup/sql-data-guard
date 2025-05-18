@@ -39,7 +39,7 @@
 {"name": "sub_select", "sql": "SELECT id, sub_select.col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123", "errors": [], "data": [[123, 1]]}
 {"name": "sub_select_expression", "sql": "SELECT id, 1 + (1 + sub_select.col) FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123", "errors": [], "data": [[123, 3]]}
 {"name": "sub_select_restriction", "sql":  "SELECT id, account_id FROM (SELECT 123 AS id, account_id FROM orders) AS a1 WHERE id = 123", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id, account_id FROM (SELECT 123 AS id, account_id FROM orders WHERE id = 123) AS a1 WHERE id = 123", "data": [[123, 123]]}
-{"name": "sub_select_access_col_without_prefix", "sql": "SELECT id, col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123", "errors": ["Column col is not allowed. Column removed from SELECT clause"], "fix": "SELECT id FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123"}
+{"name": "sub_select_access_col_without_prefix", "sql": "SELECT id, col FROM orders CROSS JOIN (SELECT 1 AS col) AS sub_select WHERE id = 123", "errors": []}
 {"name": "cast", "sql": "SELECT id FROM orders WHERE id = 123 AND CAST(product_name AS VARCHAR) = 'product1'", "errors": [], "data": [[123]]}
 {"name": "case_when", "sql": "SELECT CASE WHEN id = 123 THEN 111 ELSE FALSE END FROM orders WHERE id = 123", "errors": [], "data": [[111]]}
 {"name": "not_allowed_column", "sql": "SELECT id, not_allowed FROM orders WHERE id = 123", "errors": ["Column not_allowed is not allowed. Column removed from SELECT clause"], "fix": "SELECT id FROM orders WHERE id = 123" ,"data": [[123]]}
@@ -95,3 +95,4 @@
 {"name": "group_by_sub_select", "sql": "SELECT id FROM orders WHERE id = 123 GROUP BY (SELECT COUNT() FROM users)", "errors": ["Table users is not allowed"]}
 {"name": "limit_sub_select", "sql": "SELECT id FROM orders WHERE id = 123 LIMIT (SELECT 1 FROM users)", "errors": ["Table users is not allowed"]}
 {"name": "order_by_sub_select", "sql": "SELECT id FROM orders WHERE id = 123 ORDER BY (SELECT 1 FROM users)", "errors": ["Table users is not allowed"]}
+{"name": "top_prod", "sql": "WITH top_prod AS (SELECT product_name, COUNT() AS orders_count FROM orders WHERE id = 123 GROUP BY product_name ORDER BY orders_count DESC LIMIT 2) SELECT day, product_name, orders_count FROM orders INNER JOIN top_prod USING (product_name) WHERE id = 123"}
