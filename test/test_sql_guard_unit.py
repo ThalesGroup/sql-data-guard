@@ -369,14 +369,13 @@ class TestTrinoWithRestrictions:
             ]
         }
 
-    @pytest.mark.skip(reason="Bug in sqlglot. Waiting for fix")
     def test_date_add(self, config):
         verify_sql_test(
-            "SELECT id FROM accounts WHERE DATE(day) >= DATE_ADD('day', -7, CURRENT_DATE)",
+            "SELECT id FROM accounts WHERE DATE(day) >= DATE_ADD('DAY', -7, CURRENT_DATE)",
             config,
             dialect="trino",
             errors={"Missing restriction for table: accounts column: id value: 123"},
-            fix="SELECT id FROM accounts WHERE DATE(day) >= DATE_ADD('day', -7, CURRENT_DATE) AND id = 123",
+            fix="SELECT id FROM accounts WHERE (DATE(day) >= DATE_ADD('DAY', -7, CURRENT_DATE)) AND id = 123",
         )
 
 

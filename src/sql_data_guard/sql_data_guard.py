@@ -63,7 +63,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
         else:
             result.add_error("Could not find a query statement", False, 0.7)
     if result.can_fix and len(result.errors) > 0:
-        result.fixed = parsed.sql()
+        result.fixed = parsed.sql(dialect=dialect)
     return {
         "allowed": len(result.errors) == 0,
         "errors": result.errors,
