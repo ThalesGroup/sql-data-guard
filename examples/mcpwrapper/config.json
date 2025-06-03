@@ -6,7 +6,7 @@
       "/data/countries.db"
     ],
     "volumes": [
-      "$PWD/mcpwrapper:/data"
+      "$PWD:/data"
     ]
   },
   "mcp-tools": [
