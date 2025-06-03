@@ -1,0 +1,22 @@
+{
+  "mcp-server": {
+    "image": "mcp/sqlite",
+    "args": [
+      "--db-path",
+      "/data/countries.db"
+    ],
+    "volumes": [
+      "$PWD/mcpwrapper:/data"
+    ]
+  },
+  "mcp-tools": [
+    {
+      "tool-name": "read_query",
+      "arg-name": "query"
+    }
+  ],
+  "sql-data-guard": {
+    "dialect": "sqlite",
+    "tables": [{"table_name": "countries2", "columns": ["name"]}]
+  }
+}

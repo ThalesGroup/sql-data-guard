@@ -3,8 +3,8 @@ from typing import List
 import sqlglot
 import sqlglot.expressions as expr
 
-from sql_data_guard.verification_context import VerificationContext
-from sql_data_guard.verification_utils import split_to_expressions
+from .verification_context import VerificationContext
+from .verification_utils import split_to_expressions
 
 
 def verify_restrictions(

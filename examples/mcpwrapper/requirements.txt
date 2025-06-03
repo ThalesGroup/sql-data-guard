@@ -1,0 +1,4 @@
+mcp
+langchain-mcp-adapters
+langgraph
+langchain-aws
