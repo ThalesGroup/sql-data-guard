@@ -33,7 +33,7 @@ All contributions must be accompanied by tests to ensure that the code works as 
 #### Running unit tests
 To run all the unit tests locally, use the following command:
 ```sh
-sql-data-guard % PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
+PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
 ```
 Unit tests also run automatically on every push using a dedicated workflow.
 
