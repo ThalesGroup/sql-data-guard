@@ -1,14 +1,12 @@
+import asyncio
 import logging
-import os
 from pathlib import Path
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-
+from langchain_aws import ChatBedrock
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.prebuilt import create_react_agent
-from langchain_aws import ChatBedrock
-import asyncio
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 
 def current_directory() -> str:
@@ -33,7 +31,7 @@ async def main():
             f"{current_directory()}/config.json:/conf/config.json",
             "-e",
             f"PWD={current_directory()}",
-            "sql-data-guard-mcp:latest",
+            "ghcr.io/thalesgroup/sql-data-guard-mcp:latest",
         ],
     )
 
