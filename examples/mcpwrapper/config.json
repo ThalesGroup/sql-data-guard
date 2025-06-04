@@ -17,6 +17,21 @@
   ],
   "sql-data-guard": {
     "dialect": "sqlite",
-    "tables": [{"table_name": "countries2", "columns": ["name"]}]
+    "inject-response": true,
+    "tables": [
+      {
+        "table_name": "countries",
+        "columns": [
+          "name",
+          "region"
+        ],
+        "restrictions": [
+          {
+            "column": "region",
+            "value": "Asia"
+          }
+        ]
+      }
+    ]
   }
 }

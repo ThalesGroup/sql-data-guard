@@ -2,9 +2,10 @@ import json
 import os
 import sys
 import threading
-from typing import Optional
+from typing import Optional, Dict
 
 import docker
+
 from sql_data_guard import verify_sql
 
 
@@ -27,18 +28,38 @@ def start_inner_container():
         stdout=True,
     )
 
+    def stream_output_inject_response():
+        for line in container.logs(stream=True):
+            line_json = json.loads(line)
+            request_id = line_json["id"]
+            if request_id in errors:
+                if "result" in line_json and "content" in line_json["result"]:
+                    line_json["result"]["content"].insert(
+                        0,
+                        {
+                            "type": "text",
+                            "text": f"[{str(errors[request_id])}]",
+                        },
+                    )
+                sys.stdout.write(json.dumps(errors[request_id]) + "\n")
+                del errors[request_id]
+            sys.stdout.write(json.dumps(line_json) + "\n")
+            sys.stdout.flush()
+
     def stream_output():
         for line in container.logs(stream=True):
             sys.stdout.write(line.decode("utf-8"))
             sys.stdout.flush()
 
-    threading.Thread(target=stream_output, daemon=True).start()
+    threading.Thread(
+        target=stream_output_inject_response if inject_response else stream_output,
+        daemon=True,
+    ).start()
     return container
 
 
 def main():
     container = start_inner_container()
-
     try:
         socket = container.attach_socket(params={"stdin": True, "stream": True})
         # noinspection PyProtectedMember
@@ -54,7 +75,6 @@ def main():
 
 
 def get_sql(json_line: dict) -> Optional[str]:
-    sys.stderr.write(f"json_line: {json_line}\n")
     if json_line["method"] == "tools/call":
         for tool in config["mcp-tools"]:
             if tool["tool-name"] == json_line["params"]["name"]:
@@ -72,10 +92,19 @@ def input_line(line: str) -> str:
             config["sql-data-guard"]["dialect"],
         )
         if not result["allowed"]:
-            sys.stderr.write(f"Blocked SQL: {sql}\nErrors: {list(result['errors'])}\n")
-            updated_sql = "SELECT 'Blocked by SQL Data Guard' AS message"
-            for error in result["errors"]:
-                updated_sql += f"\nUNION ALL SELECT '{error}' AS message"
+            sys.stderr.write(
+                f"ID: {json_line['id']} Blocked SQL: {sql}\nErrors: {list(result['errors'])}\n"
+            )
+            if inject_response:
+                errors[json_line["id"]] = result
+            if result["fixed"]:
+                sys.stderr.write(f"Fixed SQL: {result['fixed']}\n")
+                updated_sql = result["fixed"]
+            else:
+                updated_sql = "SELECT 'Blocked by SQL Data Guard' AS message"
+                if not inject_response:
+                    for error in result["errors"]:
+                        updated_sql += f"\nUNION ALL SELECT '{error}' AS message"
             json_line["params"]["arguments"]["query"] = updated_sql
             line = json.dumps(json_line) + "\n"
     return line
@@ -83,4 +112,6 @@ def input_line(line: str) -> str:
 
 if __name__ == "__main__":
     config = load_config()
+    inject_response = config["sql-data-guard"]["inject-response"]
+    errors: Dict[int, dict] = {}
     main()
