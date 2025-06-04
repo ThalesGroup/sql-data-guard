@@ -38,10 +38,10 @@ def start_inner_container():
                         0,
                         {
                             "type": "text",
-                            "text": f"[{str(errors[request_id])}]",
+                            "text": f"[{errors[request_id]}]",
+                            "isError": True,
                         },
                     )
-                sys.stdout.write(json.dumps(errors[request_id]) + "\n")
                 del errors[request_id]
             sys.stdout.write(json.dumps(line_json) + "\n")
             sys.stdout.flush()
@@ -95,8 +95,6 @@ def input_line(line: str) -> str:
             sys.stderr.write(
                 f"ID: {json_line['id']} Blocked SQL: {sql}\nErrors: {list(result['errors'])}\n"
             )
-            if inject_response:
-                errors[json_line["id"]] = result
             if result["fixed"]:
                 sys.stderr.write(f"Fixed SQL: {result['fixed']}\n")
                 updated_sql = result["fixed"]
@@ -105,6 +103,10 @@ def input_line(line: str) -> str:
                 if not inject_response:
                     for error in result["errors"]:
                         updated_sql += f"\nUNION ALL SELECT '{error}' AS message"
+            if inject_response:
+                result["errors"] = list(result["errors"])
+                result["fixed"] = result["fixed"].replace("'", "''")
+                errors[json_line["id"]] = result
             json_line["params"]["arguments"]["query"] = updated_sql
             line = json.dumps(json_line) + "\n"
     return line
