@@ -105,7 +105,8 @@ def input_line(line: str) -> str:
                         updated_sql += f"\nUNION ALL SELECT '{error}' AS message"
             if inject_response:
                 result["errors"] = list(result["errors"])
-                result["fixed"] = result["fixed"].replace("'", "''")
+                if result["fixed"]:
+                    result["fixed"] = result["fixed"].replace("'", "''")
                 errors[json_line["id"]] = result
             json_line["params"]["arguments"]["query"] = updated_sql
             line = json.dumps(json_line) + "\n"
