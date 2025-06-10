@@ -1,0 +1,34 @@
+{
+  "mcp-server": {
+    "image": "mcp/postgres",
+    "args": [
+      "postgresql://myuser:mypassword@127.0.0.1:5432/mydatabase"
+    ],
+    "network-mode": "host"
+  },
+  "mcp-tools": [
+    {
+      "tool-name": "query",
+      "arg-name": "sql"
+    }
+  ],
+  "sql-data-guard": {
+    "dialect": "sqlite",
+    "inject-response": true,
+    "tables": [
+      {
+        "table_name": "countries",
+        "columns": [
+          "name",
+          "region"
+        ],
+        "restrictions": [
+          {
+            "column": "region",
+            "value": "Asia"
+          }
+        ]
+      }
+    ]
+  }
+}

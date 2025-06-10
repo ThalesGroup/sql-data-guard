@@ -17,11 +17,16 @@ def start_inner_container():
     client = docker.from_env()
     container = client.containers.run(
         config["mcp-server"]["image"],
-        " ".join(config["mcp-server"]["args"]),
+        (
+            " ".join(config["mcp-server"]["args"])
+            if "args" in config["mcp-server"]
+            else None
+        ),
         volumes=[
             v.replace("$PWD", os.environ["PWD"])
-            for v in config["mcp-server"]["volumes"]
+            for v in config["mcp-server"].get("volumes", [])
         ],
+        network_mode=config["mcp-server"].get("network-mode"),
         stdin_open=True,
         auto_remove=True,
         detach=True,
