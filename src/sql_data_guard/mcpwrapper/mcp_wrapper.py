@@ -2,7 +2,7 @@ import json
 import os
 import sys
 import threading
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 import docker
 
@@ -11,6 +11,13 @@ from sql_data_guard import verify_sql
 
 def load_config() -> dict:
     return json.load(open("/conf/config.json"))
+
+
+def _get_volumes() -> List[str]:
+    volumes = config["mcp-server"].get("volumes", [])
+    if "PWD" in os.environ:
+        volumes = [v.replace("$PWD", os.environ["PWD"]) for v in volumes]
+    return volumes
 
 
 def start_inner_container():
@@ -22,10 +29,7 @@ def start_inner_container():
             if "args" in config["mcp-server"]
             else None
         ),
-        volumes=[
-            v.replace("$PWD", os.environ["PWD"])
-            for v in config["mcp-server"].get("volumes", [])
-        ],
+        volumes=_get_volumes(),
         network_mode=config["mcp-server"].get("network-mode"),
         stdin_open=True,
         auto_remove=True,
