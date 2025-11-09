@@ -1,11 +1,9 @@
 import sqlite3
-from sqlite3 import Connection
-from typing import Set
 
 import pytest
 
-from sql_data_guard import verify_sql
 from conftest import verify_sql_test
+from sql_data_guard import verify_sql
 
 
 class TestInvalidQueries:
