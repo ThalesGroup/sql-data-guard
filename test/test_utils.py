@@ -5,11 +5,13 @@ import http
 import json
 import logging
 import os
+import pprint
+import urllib.parse
 from http.client import HTTPSConnection
 from pathlib import Path
 from typing import Optional, List
 
-_DEFAULT_MODEL_ID = "anthropic.claude-instant-v1"
+_DEFAULT_MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
 _PROJECT_FOLDER = Path(os.path.dirname(os.path.abspath(__file__))).parent.absolute()
 
 
@@ -29,9 +31,8 @@ def init_env_from_file():
 
 def get_model_ids() -> List[str]:
     return [
-        "anthropic.claude-instant-v1",
-        "anthropic.claude-v2:1",
-        "anthropic.claude-v3",
+        "anthropic.claude-3-haiku-20240307-v1:0",
+        "anthropic.claude-3-sonnet-20240229-v1:0",
     ]
 
 
@@ -67,8 +68,8 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
     json_payload = json.dumps(prompt_body)
 
     hashed_payload = hashlib.sha256(json_payload.encode()).hexdigest()
-
-    canonical_uri = f"/model/{model_id}/invoke"
+    encoded_model_id = urllib.parse.quote(model_id, safe="")
+    canonical_uri = f"/model/{encoded_model_id}/invoke"
     canonical_querystring = ""
     canonical_headers = f"host:{host}\nx-amz-date:{amz_date}\n"
     signed_headers = "host;x-amz-date"
@@ -97,6 +98,7 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
         "Content-Type": "application/json",
         "X-Amz-Bedrock-Model-Id": model_id,
         "x-amz-date": amz_date,
+        "host": host,  # <-- Add this line
         "Authorization": f"{algorithm} Credential={access_key}/{credential_scope}, "
         f"SignedHeaders={signed_headers}, Signature={signature}",
     }
@@ -105,6 +107,10 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
 
     conn = http.client.HTTPSConnection(host)
     try:
+        logging.info(f"Requesting: POST {canonical_uri}")
+        logging.info(f"Request headers:\n{pprint.pformat(headers)}")
+        logging.info(f"Request payload:\n{json_payload}")
+
         conn.request("POST", canonical_uri, body=json_payload, headers=headers)
         response = conn.getresponse()
         logging.info(f"Response status: {response.status}")

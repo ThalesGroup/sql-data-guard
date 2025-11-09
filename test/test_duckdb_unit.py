@@ -1,4 +1,3 @@
-from os import confstr_names
 from typing import Set, Generator
 
 import duckdb

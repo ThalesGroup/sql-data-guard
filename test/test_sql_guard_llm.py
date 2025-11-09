@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from typing import Optional
+from typing import Optional, Tuple
 
 import pytest
 
@@ -61,7 +61,7 @@ class TestQueryUsingLLM:
 
     def _build_prompt(
         self, question: str, use_system_prompt: bool, cnn
-    ) -> (Optional[str], str):
+    ) -> Tuple[Optional[str], str]:
         system_prompt = f"""<instructions>
         I have a table with the columns matching metadata below. The table name is {TestQueryUsingLLM._TABLE_NAME}.
         you MUST query from this table only. No other tables are allowed. 

@@ -20,7 +20,7 @@ def verify_restrictions(
         and_exps = list(split_to_expressions(where_clause.this, expr.And))
     for c_t in context.config["tables"]:
         for from_t in [t for t in from_tables if t.name == c_t["table_name"]]:
-            for idx, r in enumerate(c_t.get("restrictions", [])):
+            for r in c_t.get("restrictions", []):
                 found = False
                 for sub_exp in and_exps:
                     if _verify_restriction(r, from_t, sub_exp):

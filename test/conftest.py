@@ -35,12 +35,3 @@ def verify_sql_test(
         if data is not None:
             assert fetched_data == [tuple(row) for row in data]
     return sql_to_use
-
-
-def verify_sql_test_data(
-    sql: str, config: dict, cnn: Connection, data: list, dialect: str = "sqlite"
-):
-    result = verify_sql(sql, config, dialect)
-    sql_to_use = result.get("fixed", sql)
-    fetched_data = cnn.execute(sql_to_use).fetchall()
-    assert fetched_data == [tuple(row) for row in data], fetched_data
