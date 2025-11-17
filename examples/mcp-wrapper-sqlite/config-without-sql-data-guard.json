@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-v",
+        "data:/data",
+        "mcp/sqlite",
+        "--db-path",
+        "/data/countries.db"
+      ]
+    }
+  }
+}
