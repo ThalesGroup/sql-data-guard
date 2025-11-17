@@ -49,7 +49,7 @@ from sql_data_guard import verify_sql
 config = {
     "tables": [
         {
-            "name": "orders",
+            "table_name": "orders",
             "columns": ["id", "product_name", "account_id"],
             "restrictions": [{"column": "account_id", "value": 123}]
         }
