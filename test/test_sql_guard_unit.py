@@ -430,3 +430,44 @@ WHERE bool_col = True AND str_col1 = 'abc' AND str_col2 = 'def'""",
             cnn=cnn,
             data=[(0,)],
         )
+
+
+class TestMaxLength:
+    @pytest.fixture(scope="class")
+    def config_max_length(self) -> dict:
+        return {
+            "tables": [
+                {
+                    "table_name": "test_table",
+                    "columns": ["col1", "col2"],
+                }
+            ],
+            "max_length": 100,
+        }
+
+    @pytest.fixture(scope="class")
+    def config_default_max_length(self) -> dict:
+        return {
+            "tables": [
+                {
+                    "table_name": "test_table",
+                    "columns": ["col1", "col2"],
+                }
+            ]
+        }
+
+    def test_sql_too_long(self, config_max_length):
+        long_sql = (
+            "SELECT " + ", ".join([f"1" for _ in range(100)]) + " FROM test_table"
+        )
+        result = verify_sql(long_sql, config_max_length)
+        assert result["allowed"] == False
+        assert "SQL exceeds maximum length of 100 characters." in result["errors"]
+
+    def test_default_max_length(self, config_default_max_length):
+        long_sql = (
+            "SELECT " + ", ".join([f"1" for _ in range(10_000)]) + " FROM test_table"
+        )
+        result = verify_sql(long_sql, config_default_max_length)
+        assert result["allowed"] == False
+        assert "SQL exceeds maximum length of 10000 characters." in result["errors"]

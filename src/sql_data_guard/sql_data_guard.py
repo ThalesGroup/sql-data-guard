@@ -10,6 +10,8 @@ from .restriction_verification import verify_restrictions
 from .verification_context import VerificationContext
 from .verification_utils import split_to_expressions, find_direct
 
+_DEFAULT_MAX_LENGTH = 10_000
+
 
 def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
     """
@@ -34,6 +36,14 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             "errors": [
                 "Invalid configuration provided. The configuration must include 'tables'."
             ],
+            "fixed": None,
+            "risk": 1.0,
+        }
+    max_length = config.get("max_length", _DEFAULT_MAX_LENGTH)
+    if len(sql) > max_length:
+        return {
+            "allowed": False,
+            "errors": [f"SQL exceeds maximum length of {max_length} characters."],
             "fixed": None,
             "risk": 1.0,
         }
