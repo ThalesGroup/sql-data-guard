@@ -1,0 +1,168 @@
+identity:
+  name: verify_sql
+  author: imperva
+  label:
+    en_US: Verify SQL
+  description:
+    en_US: Verifies SQL queries against a policy configuration
+  icon: icon.png
+
+
+description:
+  human:
+    en_US: Verify SQL queries against a policy configuration
+  llm: Verify SQL queries against a policy configuration
+
+parameters:
+  - name: sql
+    type: string
+    required: true
+    label:
+      en_US: SQL Query
+    human_description:
+      en_US: "SQL query to be verified"
+    llm_description: "SQL query to be verified"
+    form: llm
+
+  - name: config
+    type: string
+    required: true
+    label:
+      en_US: Policy configuration
+    human_description:
+      en_US: "Policy configuration for SQL verification"
+    llm_description: "Policy configuration for SQL verification"
+    form: llm
+
+  - name: dialect
+    type: select
+    required: false
+    label:
+      en_US: SQL Dialect
+    human_description:
+      en_US: "111 SQL dialect (e.g., MySQL, PostgreSQL)"
+    llm_description: "SQL dialect (e.g., MySQL, PostgreSQL)"
+    form: form
+    options:
+      - label:
+          en_US: Athena
+        value: athena
+      - label:
+          en_US: BigQuery
+        value: bigquery
+      - label:
+          en_US: ClickHouse
+        value: clickhouse
+      - label:
+          en_US: Databricks
+        value: databricks
+      - label:
+          en_US: Doris
+        value: doris
+      - label:
+          en_US: Dremio
+        value: dremio
+      - label:
+          en_US: Drill
+        value: drill
+      - label:
+          en_US: Druid
+        value: druid
+      - label:
+          en_US: DuckDB
+        value: duckdb
+      - label:
+          en_US: Dune
+        value: dune
+      - label:
+          en_US: Exasol
+        value: exasol
+      - label:
+          en_US: Fabric
+        value: fabric
+      - label:
+          en_US: Hive
+        value: hive
+      - label:
+          en_US: Materialize
+        value: materialize
+      - label:
+          en_US: MySQL
+        value: mysql
+      - label:
+          en_US: Oracle
+        value: oracle
+      - label:
+          en_US: PostgreSQL
+        value: postgres
+      - label:
+          en_US: Presto
+        value: presto
+      - label:
+          en_US: PRQL
+        value: prql
+      - label:
+          en_US: Redshift
+        value: redshift
+      - label:
+          en_US: RisingWave
+        value: risingwave
+      - label:
+          en_US: SingleStore
+        value: singlestore
+      - label:
+          en_US: Snowflake
+        value: snowflake
+      - label:
+          en_US: Solr
+        value: solr
+      - label:
+          en_US: Spark
+        value: spark
+      - label:
+          en_US: Spark 2
+        value: spark2
+      - label:
+          en_US: SQLite
+        value: sqlite
+      - label:
+          en_US: StarRocks
+        value: starrocks
+      - label:
+          en_US: Tableau
+        value: tableau
+      - label:
+          en_US: Teradata
+        value: teradata
+      - label:
+          en_US: Trino
+        value: trino
+      - label:
+          en_US: TSQL
+        value: tsql
+
+output_schema:
+  type: object
+  properties:
+    allowed:
+      type: boolean
+      description: "True if the SQL passes all restriction checks."
+    fixed_sql:
+      type: string
+      description: "The rewritten SQL with corrections or sanitization applied."
+    errors:
+      type: array
+      items:
+        type: string
+      description: "List of violation messages preventing execution."
+    risk:
+      type: number
+      description: "Risk score from 0.0 (safe) to 1.0 (highly dangerous)."
+    verified_sql:
+      type: string
+      description: "The original SQL, or fixed SQL after verification."
+
+
+extra:
+  python:
+    source: tools/sql_data_guard_tool.py

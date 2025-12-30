@@ -1,0 +1,15 @@
+identity:
+  author: imperva
+  name: sql_data_guard_node
+  label:
+    en_US: SQL Data Guard
+  description:
+    en_US: Verifies SQL queries against a policy configuration
+  icon: icon.png
+  tags:
+    - utilities
+tools:
+  - tools/sql_data_guard_tool.yaml
+extra:
+  python:
+    source: provider/sql_data_guard_provider.py

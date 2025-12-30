@@ -1,0 +1,2 @@
+sql_data_guard
+dify_plugin==0.7.0
