@@ -37,3 +37,10 @@ Result Output Variables:
 | fixed         | SELECT id, product_name, account_id FROM orders WHERE account_id = 123                                                                                                                               |
 | verified_sql  | SELECT id, product_name, account_id FROM orders WHERE account_id = 123                                                                                                                               |
 | risk          | 0.7                                                                                                                                                                                                  |
+
+## Local Packaging
+To test the plugin locally install the Dify CLI and run:
+```sh
+dify plugin package ../dify
+```
+

@@ -6,3 +6,4 @@ do-not-commit/*
 **/__pycache__/
 dist/**
 **/*.egg-info/
+plugins/dify/dify.difypkg
