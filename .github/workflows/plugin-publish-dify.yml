@@ -24,6 +24,8 @@ jobs:
       - name: Get basic info from manifest
         id: get_basic_info
         run: |
+          cd $GITHUB_WORKSPACE
+          cd plugins/dify
           PLUGIN_NAME=$(grep "^name:" manifest.yaml | cut -d' ' -f2)
           echo "Plugin name: $PLUGIN_NAME"
           echo "plugin_name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
@@ -41,6 +43,7 @@ jobs:
         id: package
         run: |
           cd $GITHUB_WORKSPACE
+          cd plugins/dify          
           PACKAGE_NAME="${{ steps.get_basic_info.outputs.plugin_name }}-${{ steps.get_basic_info.outputs.version }}.difypkg"
           $RUNNER_TEMP/bin/dify-plugin-linux-amd64 plugin package . -o "$PACKAGE_NAME"
 
