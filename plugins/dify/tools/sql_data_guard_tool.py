@@ -12,7 +12,7 @@ class SqlDataGuardTool(Tool):
     def _invoke(self, tool_parameters: dict[str, Any]) -> Generator[ToolInvokeMessage]:
         sql = tool_parameters.get("sql")
         config = tool_parameters.get("config")
-        dialect = tool_parameters.get("dialect", "default")
+        dialect = tool_parameters.get("dialect")
 
         if not sql:
             raise ValueError("Missing required parameter 'sql'")
