@@ -12,6 +12,7 @@ plugins/dify/*.difypkg
 .coverage
 coverage.xml
 htmlcov/
+QUALITY_REPORT.md
 
 # Sphinx documentation build output
 docs/build/

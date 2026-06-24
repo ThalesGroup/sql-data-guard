@@ -12,6 +12,7 @@ import sqlglot
 import sqlglot.expressions as expr
 from sqlglot.optimizer.simplify import simplify
 
+from .cypher_guard import verify_cypher
 from .restriction_validation import UnsupportedRestrictionError, validate_restrictions
 from .restriction_verification import verify_restrictions
 from .verification_context import VerificationContext
@@ -52,6 +53,9 @@ def verify_sql(sql: str, config: dict[str, Any], dialect: str | None = None) -> 
             "fixed": None,
             "risk": 1.0,
         }
+
+    if dialect in ("cypher", "neo4j"):
+        return verify_cypher(sql, config)
 
     # First, validate restrictions
     try:

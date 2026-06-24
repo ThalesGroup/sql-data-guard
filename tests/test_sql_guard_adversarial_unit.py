@@ -1,6 +1,7 @@
 import sqlite3
+
 import pytest
-from conftest import verify_sql_test
+
 from sql_data_guard import verify_sql
 
 
