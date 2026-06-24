@@ -5,23 +5,20 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read  # To read the repository contents (for `actions/checkout`)
-      actions: read  # Allow the use of actions like `actions/cache`
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Update python and install dependencies
-        uses: ./.github/actions/cached-requirements
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.13"
 
-      - name: Install project and test dependencies
-        run: |
-          source .venv/bin/activate
-          pip install -r requirements.txt  # Install main project dependencies
-          pip install -r test/test.requirements.txt
+      - name: Install dependencies
+        run: uv sync --all-groups
 
       - name: Run unit tests
-        run: |
-          source .venv/bin/activate
-          PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
+        run: uv run pytest --color=yes --ignore=tests/test_sql_guard_llm.py

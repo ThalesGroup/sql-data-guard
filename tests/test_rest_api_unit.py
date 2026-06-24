@@ -1,0 +1,77 @@
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from sql_data_guard.rest import app
+
+client = TestClient(app)
+
+
+class TestRestAppErrors:
+    def test_verify_sql_method_not_allowed(self) -> None:
+        result = client.get("/verify-sql")
+        assert result.status_code == 405
+
+    def test_verify_sql_no_json_data(self) -> None:
+        result = client.post("/verify-sql")
+        assert result.status_code == 422
+        assert "detail" in result.json()
+
+    def test_verify_sql_no_sql(self) -> None:
+        result = client.post("/verify-sql", json={"config": {}})
+        assert result.status_code == 422
+        assert "detail" in result.json()
+
+    def test_very_sql_no_config(self) -> None:
+        result = client.post(
+            "/verify-sql", json={"sql": "SELECT * FROM my_table"}
+        )
+        assert result.status_code == 422
+        assert "detail" in result.json()
+
+
+class TestRestAppVerifySql:
+    @pytest.fixture(scope="class")
+    def config(self) -> dict[str, Any]:
+        return {
+            "tables": [
+                {
+                    "table_name": "orders",
+                    "database_name": "orders_db",
+                    "columns": ["id", "product_name", "account_id", "day"],
+                    "restrictions": [{"column": "id", "value": 123}],
+                }
+            ]
+        }
+
+    def test_verify_sql(self, config: Any) -> None:
+        result = client.post(
+            "/verify-sql",
+            json={"sql": "SELECT id FROM orders WHERE id = 123", "config": config},
+        )
+        assert result.status_code == 200
+        assert result.json() == {
+            "allowed": True,
+            "errors": [],
+            "fixed": None,
+            "risk": 0.0,
+        }
+
+    def test_verify_sql_error(self, config: Any) -> None:
+        result = client.post(
+            "/verify-sql",
+            json={
+                "sql": "SELECT id, another_col FROM orders WHERE id = 123",
+                "config": config,
+               },
+        )
+        assert result.status_code == 200
+        assert result.json() == {
+            "allowed": False,
+            "errors": [
+                "Column another_col is not allowed. Column removed from SELECT clause"
+            ],
+            "fixed": "SELECT id FROM orders WHERE id = 123",
+            "risk": 0.3,
+        }

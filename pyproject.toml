@@ -1,30 +1,100 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools]
-include-package-data = false
-package-dir = {"" = "src"}
-[tool.pip]
-extra-index-url = ["https://pypi.org/simple"]
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sql_data_guard"]
+
 [project]
 name = "sql-data-guard"
-version = "UPDATED-BY-WORKFLOW"
+version = "0.0.1"
 dependencies = [
-    "sqlglot"
+  "sqlglot>=25.0.0",
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0",
+  "pydantic>=2.0.0",
+  "docker>=7.0.0",
 ]
 authors = [
-  { name="Imperva - Threat Reseach Infra", email="ww.dis.imperva.threat-research-infra@thalesgroup.com" },
+  { name = "Imperva - Threat Reseach Infra", email = "ww.dis.imperva.threat-research-infra@thalesgroup.com" },
 ]
 description = "Safety Layer for LLM Database Interactions"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.13"
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
 ]
-license = {file = "LICENSE.md"}
+license = { file = "LICENSE.md" }
 
 [project.urls]
 Homepage = "https://github.com/ThalesGroup/sql-data-guard"
 Issues = "https://github.com/ThalesGroup/sql-data-guard/issues"
+
+[dependency-groups]
+dev = ["ruff>=0.8.0", "interrogate>=1.7.0", "mypy[faster-cache]>=2.1.0"]
+test = ["pytest>=8.0.0", "pytest-cov>=5.0.0", "duckdb>=1.0.0", "httpx>=0.27.0"]
+docs = ["sphinx>=8.0.0", "sphinx-rtd-theme>=2.0.0", "myst-parser>=3.0.0"]
+
+[tool.interrogate]
+ignore-init-method = true
+ignore-magic = true
+fail-under = 80
+exclude = ["setup.py", "tests", "openspec"]
+verbose = 0
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.lint]
+extend-select = [
+  "B",    # Bugbear
+  "C4",   # Catch incorrect use of comprehensions, dict, list, etc
+  "E",    # PyCodeStyle errors
+  "F",    # Pyflakes rules
+  "FAST", # FastAPI
+  "FURB", # Suggest more idiomatic Python patterns
+  "I",    # Sort imports properly
+  "ICN",  # Use common import conventions
+  "ISC",  # Good use of string concatenation
+  "PTH",  # Use pathlib instead of os.path
+  "RET",  # Good return practices
+  "S",    # Flake8-bandit security rules
+  "SIM",  # Common simplification rules
+  "TC",   # Enforce importing certain types in a TYPE_CHECKING block
+  "TID",  # Some good import practices
+  "UP",   # Warn if certain things can changed due to newer Python versions
+  "W",    # PyCodeStyle warnings
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.13"
+files = "src/**/*.py,plugins/**/*.py,scripts/**/*.py"
+strict = false
+pretty = true
+follow_imports = "silent"
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unused_configs = true
+disallow_any_generics = true
+no_implicit_reexport = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+explicit_package_bases = true

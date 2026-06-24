@@ -1,0 +1,37 @@
+from sqlite3 import Connection
+from typing import Any
+
+from sql_data_guard import verify_sql
+
+
+def verify_sql_test(
+    sql: str,
+    config: dict[str, Any],
+    errors: set[str] | None = None,
+    fix: str | None = None,
+    dialect: str = "sqlite",
+    cnn: Connection | None = None,
+    data: list[Any] | None = None,
+) -> str:
+    result = verify_sql(sql, config, dialect)
+    if errors is None:
+        assert result["errors"] == set()
+    else:
+        expected_errors = list(errors)
+        actual_errors = list(result["errors"])
+        assert actual_errors == expected_errors
+    if len(result["errors"]) > 0:
+        assert result["risk"] > 0
+    else:
+        assert result["risk"] == 0
+    if fix is None:
+        assert result.get("fixed") is None
+        sql_to_use = sql
+    else:
+        assert result["fixed"] == fix
+        sql_to_use = result["fixed"]
+    if cnn and data is not None:
+        fetched_data = cnn.execute(sql_to_use).fetchall()
+        if data is not None:
+            assert fetched_data == [tuple(row) for row in data]
+    return sql_to_use

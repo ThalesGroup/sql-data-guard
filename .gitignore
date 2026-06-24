@@ -7,3 +7,12 @@ do-not-commit/*
 dist/**
 **/*.egg-info/
 plugins/dify/*.difypkg
+
+# Test coverage
+.coverage
+coverage.xml
+htmlcov/
+QUALITY_REPORT.md
+
+# Sphinx documentation build output
+docs/build/

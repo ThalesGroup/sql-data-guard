@@ -1,4 +1,12 @@
-from typing import List
+
+"""
+SQL Data Guard restriction verification.
+
+This module contains logic to verify that parsed SQL query components adhere
+to configured data access restrictions (such as WHERE clause values/operators).
+"""
+
+from typing import Any
 
 import sqlglot
 import sqlglot.expressions as expr
@@ -10,8 +18,19 @@ from .verification_utils import split_to_expressions
 def verify_restrictions(
     select_statement: expr.Query,
     context: VerificationContext,
-    from_tables: List[expr.Table],
-):
+    from_tables: list[expr.Table],
+) -> None:
+    """
+    Verifies that the given query's FROM tables respect the configured restrictions.
+
+    If a restriction is missing, an error is reported in the verification context
+    and a correct restriction is injected into the query.
+
+    Args:
+        select_statement (expr.Query): The parsed query to verify.
+        context (VerificationContext): The verification context holding config and errors.
+        from_tables (list[expr.Table]): The list of tables referenced in the query's FROM clause.
+    """
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
         where_clause = select_statement.find(expr.Where)
@@ -34,8 +53,10 @@ def verify_restrictions(
                     else:
                         t_prefix = ""
 
+                    val_desc = r.get("values", r.get("value"))
                     context.add_error(
-                        f"Missing restriction for table: {c_t['table_name']} column: {t_prefix}{r['column']} value: {r.get('values', r.get('value'))}",
+                        f"Missing restriction for table: {c_t['table_name']} "
+                        f"column: {t_prefix}{r['column']} value: {val_desc}",
                         True,
                         0.5,
                     )
@@ -55,8 +76,8 @@ def verify_restrictions(
 
 
 def _create_new_condition(
-    context: VerificationContext, restriction: dict, table_prefix: str
-) -> expr.Expression:
+    context: VerificationContext, restriction: dict[str, Any], table_prefix: str
+) -> Any:
     """
     Used to create a restriction condition for a given restriction.
 
@@ -82,22 +103,29 @@ def _create_new_condition(
             if "value" in restriction
             else str(restriction["values"])[1:-1]
         )
-    new_condition = sqlglot.parse_one(
+    return sqlglot.parse_one(
         f"{table_prefix}{restriction['column']} {operator} {operand}",
         dialect=context.dialect,
     )
-    return new_condition
 
 
-def _format_value(value):
+def _format_value(value: Any) -> Any:
+    """
+    Formats a raw Python value into a string literal if it's a string, or returns it as is.
+
+    Args:
+        value (Any): The value to format.
+
+    Returns:
+        Any: The formatted value.
+    """
     if isinstance(value, str):
         return f"'{value}'"
-    else:
-        return value
+    return value
 
 
 def _verify_restriction(
-    restriction: dict, from_table: expr.Table, exp: expr.Expression
+    restriction: dict[str, Any], from_table: expr.Table, exp: expr.Expression
 ) -> bool:
     """
     Verifies if a given restriction is satisfied within an SQL expression.
@@ -147,23 +175,28 @@ def _verify_restriction(
     ):
         if restriction.get("operation") not in [">=", ">", "<=", "<"]:
             return False
-        assert len(values) == 1
+        if len(values) != 1:
+            return False
         if isinstance(exp, expr.LT) and restriction["operation"] == "<":
             return str(exp.right.this) < values[0]
-        elif isinstance(exp, expr.LTE) and restriction["operation"] == "<=":
+        if isinstance(exp, expr.LTE) and restriction["operation"] == "<=":
             return str(exp.right.this) <= values[0]
-        elif isinstance(exp, expr.GT) and restriction["operation"] == ">":
+        if isinstance(exp, expr.GT) and restriction["operation"] == ">":
             return str(exp.right.this) > values[0]
-        elif isinstance(exp, expr.GTE) and restriction["operation"] == ">=":
+        if isinstance(exp, expr.GTE) and restriction["operation"] == ">=":
             return str(exp.right.this) >= values[0]
-        else:
-            return False
+        return False
     return False
 
 
-def _get_restriction_values(restriction: dict) -> List[str]:
-    if "values" in restriction:
-        values = [str(v) for v in restriction["values"]]
-    else:
-        values = [str(restriction["value"])]
-    return values
+def _get_restriction_values(restriction: dict[str, Any]) -> list[str]:
+    """
+    Extracts and stringifies restriction values from a restriction dictionary.
+
+    Args:
+        restriction (dict[str, Any]): The restriction definition dictionary.
+
+    Returns:
+        list[str]: A list of restriction value strings.
+    """
+    return [str(v) for v in restriction["values"]] if "values" in restriction else [str(restriction["value"])]

@@ -1,20 +1,19 @@
+import asyncio
 import logging
 from pathlib import Path
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-
+from langchain_aws import ChatBedrock
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.prebuilt import create_react_agent
-from langchain_aws import ChatBedrock
-import asyncio
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 
 def current_directory() -> str:
     return str(Path(__file__).parent.absolute())
 
 
-async def main():
+async def main() -> None:
     model = ChatBedrock(
         model="anthropic.claude-3-5-sonnet-20240620-v1:0",
         region="us-east-1",
@@ -61,7 +60,7 @@ async def main():
     logging.info("Done (main)")
 
 
-def init_logging():
+def init_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
