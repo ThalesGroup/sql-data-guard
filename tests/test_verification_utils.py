@@ -4,7 +4,7 @@ import sqlglot.expressions as expr
 from sql_data_guard.verification_utils import find_direct, split_to_expressions
 
 
-def test_split_to_expressions_matching():
+def test_split_to_expressions_matching() -> None:
     # Scenario: Split expression of matching type (nested AND expressions)
     expression = sqlglot.parse_one("a AND b AND c")
     results = list(split_to_expressions(expression, expr.And))
@@ -14,7 +14,7 @@ def test_split_to_expressions_matching():
     assert [r.sql() for r in results] == ["a", "b", "c"]
 
 
-def test_split_to_expressions_non_matching():
+def test_split_to_expressions_non_matching() -> None:
     # Scenario: Do not split expression of non-matching type
     expression = sqlglot.parse_one("a OR b")
     results = list(split_to_expressions(expression, expr.And))
@@ -23,7 +23,7 @@ def test_split_to_expressions_non_matching():
     assert results[0].sql() == "a OR b"
 
 
-def test_find_direct_matching():
+def test_find_direct_matching() -> None:
     # Scenario: Find direct child matching type
     expression = sqlglot.parse_one("SELECT * FROM t WHERE a AND b")
     results = list(find_direct(expression, expr.Where))
@@ -33,7 +33,7 @@ def test_find_direct_matching():
     assert results[0].sql() == "WHERE a AND b"
 
 
-def test_find_direct_ignore_indirect():
+def test_find_direct_ignore_indirect() -> None:
     # Scenario: Ignore indirect child types
     expression = sqlglot.parse_one("SELECT * FROM t WHERE a AND b")
     results = list(find_direct(expression, expr.And))

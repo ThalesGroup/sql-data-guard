@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import sqlglot
 import sqlglot.expressions as expr
@@ -12,7 +13,7 @@ from .verification_utils import find_direct, split_to_expressions
 _DEFAULT_MAX_LENGTH = 10_000
 
 
-def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
+def verify_sql(sql: str, config: dict[str, Any], dialect: str | None = None) -> dict[str, Any]:
     """
     Verifies an SQL query against a given configuration and optionally fixes it.
 
@@ -71,7 +72,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             _verify_query_statement(parsed, result)
         else:
             result.add_error("Could not find a query statement", False, 0.7)
-    if result.can_fix and len(result.errors) > 0:
+    if result.can_fix and len(result.errors) > 0 and parsed is not None:
         result.fixed = parsed.sql(dialect=dialect)
     return {
         "allowed": len(result.errors) == 0,
@@ -85,7 +86,7 @@ def _verify_where_clause(
     context: VerificationContext,
     select_statement: expr.Query,
     from_tables: list[expr.Table],
-):
+) -> None:
     where_clause = select_statement.find(expr.Where)
     if where_clause:
         for sub in where_clause.find_all(expr.Subquery, expr.Exists):
@@ -104,7 +105,7 @@ def _verify_static_expression(
         for e in and_exps:
             if _has_static_expression(context, e):
                 has_static_exp = True
-    if has_static_exp:
+    if has_static_exp and where_clause is not None:
         simplify(where_clause)
     return not has_static_exp
 
@@ -136,7 +137,7 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
     return result
 
 
-def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
+def _verify_query_statement(query_statement: expr.Query, context: VerificationContext) -> None:
     if isinstance(query_statement, expr.Union):
         _verify_query_statement(query_statement.left, context)
         _verify_query_statement(query_statement.right, context)
@@ -151,7 +152,7 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
         _verify_sub_queries(context, query_statement)
 
 
-def _verify_from_tables(context, query_statement):
+def _verify_from_tables(context: VerificationContext, query_statement: expr.Query) -> list[expr.Table]:
     from_tables = _get_from_clause_tables(query_statement, context)
     for t in from_tables:
         found = False
@@ -163,7 +164,7 @@ def _verify_from_tables(context, query_statement):
     return from_tables
 
 
-def _verify_sub_queries(context, query_statement):
+def _verify_sub_queries(context: VerificationContext, query_statement: expr.Query) -> None:
     for exp_type in [expr.Order, expr.Offset, expr.Limit, expr.Group, expr.Having]:
         for exp in find_direct(query_statement, exp_type):
             if exp:
@@ -175,7 +176,7 @@ def _verify_select_clause(
     context: VerificationContext,
     select_clause: expr.Query,
     from_tables: list[expr.Table],
-):
+) -> None:
     for select in select_clause.selects:
         for sub in select.find_all(expr.Subquery):
             _add_table_alias(sub, context)
@@ -192,7 +193,7 @@ def _verify_select_clause(
 
 def _verify_select_clause_element(
     from_tables: list[expr.Table], context: VerificationContext, e: expr.Expression
-):
+) -> bool:
     if isinstance(e, expr.Column):
         if not _verify_col(e, from_tables, context):
             return False
@@ -202,9 +203,10 @@ def _verify_select_clause_element(
             for config_t in context.config["tables"]:
                 if t.name == config_t["table_name"]:
                     for c in config_t["columns"]:
-                        e.parent.set(
-                            "expressions", e.parent.expressions + [sqlglot.parse_one(c)]
-                        )
+                        if e.parent is not None:
+                            e.parent.set(
+                                "expressions", e.parent.expressions + [sqlglot.parse_one(c)]
+                            )
         return False
     elif isinstance(e, expr.Tuple):
         result = True
@@ -252,13 +254,12 @@ def _verify_col(
         )
     ):
         return True
-    else:
-        context.add_error(
-            f"Column {col.name} is not allowed. Column removed from SELECT clause",
-            True,
-            0.3,
-        )
-        return False
+    context.add_error(
+        f"Column {col.name} is not allowed. Column removed from SELECT clause",
+        True,
+        0.3,
+    )
+    return False
 
 
 def _get_from_clause_tables(
@@ -294,7 +295,7 @@ def _get_from_clause_tables(
     return result
 
 
-def _add_table_alias(exp: expr.Expression, context: VerificationContext):
+def _add_table_alias(exp: expr.Expression, context: VerificationContext) -> None:
     for table_alias in find_direct(exp, expr.TableAlias):
         if isinstance(table_alias, expr.TableAlias):
             if len(table_alias.columns) > 0:

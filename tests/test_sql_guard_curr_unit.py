@@ -1,4 +1,6 @@
 import sqlite3
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from conftest import verify_sql_test
@@ -8,7 +10,7 @@ from sql_data_guard import verify_sql
 
 class TestSQLJoins:
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         """Provide the configuration for SQL validation"""
         return {
             "tables": [
@@ -34,7 +36,7 @@ class TestSQLJoins:
         }
 
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
             conn.execute(
@@ -82,7 +84,7 @@ class TestSQLJoins:
 
             yield conn
 
-    def test_select_product_with_price_120(self, config, cnn):
+    def test_select_product_with_price_120(self, config: Any, cnn: Any) -> None:
         """Test case for selecting product with price 120"""
         verify_sql_test(
             """
@@ -93,7 +95,7 @@ class TestSQLJoins:
             data=[],
         )
 
-    def test_inner_join_using(self, config, cnn):
+    def test_inner_join_using(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             "SELECT prod_id, prod_name, order_id "
             "FROM products INNER JOIN orders USING (prod_id) WHERE price = 100",
@@ -102,7 +104,7 @@ class TestSQLJoins:
             data=[(2, "Product2", 2), (4, "Product4", 4)],
         )
 
-    def test_inner_join_with_restriction(self, config, cnn):
+    def test_inner_join_with_restriction(self, config: Any, cnn: Any) -> None:
         """Test case for inner join with price restrictions"""
         sql_query = """
             SELECT prod_name
@@ -120,7 +122,7 @@ class TestSQLJoins:
             ],
         )
 
-    def test_right_join_with_price_less_than_100(self, config):
+    def test_right_join_with_price_less_than_100(self, config: Any) -> None:
         sql_query = """
             SELECT prod_name
             FROM products
@@ -135,7 +137,7 @@ class TestSQLJoins:
             in res["errors"]
         ), res
 
-    def test_left_join_with_price_greater_than_50(self, config):
+    def test_left_join_with_price_greater_than_50(self, config: Any) -> None:
         sql_query = """
             SELECT prod_name
             FROM products
@@ -145,7 +147,7 @@ class TestSQLJoins:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
 
-    def test_inner_join_no_match(self, config):
+    def test_inner_join_no_match(self, config: Any) -> None:
         sql_query = """
                SELECT prod_name
                FROM products
@@ -159,7 +161,7 @@ class TestSQLJoins:
             in res["errors"]
         ), res
 
-    def test_full_outer_join_with_no_matching_rows(self, config, cnn):
+    def test_full_outer_join_with_no_matching_rows(self, config: Any, cnn: Any) -> None:
         sql_query = """
             SELECT prod_name
             FROM products
@@ -180,7 +182,7 @@ class TestSQLJoins:
             ],
         )
 
-    def test_left_join_no_match(self, config):
+    def test_left_join_no_match(self, config: Any) -> None:
         sql_query = """
                SELECT prod_name
                FROM products
@@ -194,7 +196,7 @@ class TestSQLJoins:
             in res["errors"]
         ), res
 
-    def test_inner_join_on_specific_prod_id(self, config, cnn):
+    def test_inner_join_on_specific_prod_id(self, config: Any, cnn: Any) -> None:
         sql_query = """
             SELECT prod_name
             FROM products
@@ -208,7 +210,7 @@ class TestSQLJoins:
             data=[],
         )
 
-    def test_inner_join_with_multiple_conditions(self, config):
+    def test_inner_join_with_multiple_conditions(self, config: Any) -> None:
         sql_query = """
                SELECT prod_name
                FROM products
@@ -219,7 +221,7 @@ class TestSQLJoins:
         assert res["allowed"] is True, res
         assert res["errors"] == set(), res
 
-    def test_union_with_invalid_column(self, config):
+    def test_union_with_invalid_column(self, config: Any) -> None:
         sql_query = """
                SELECT prod_name FROM products
                UNION
@@ -228,7 +230,7 @@ class TestSQLJoins:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
 
-    def test_right_join_with_no_matching_prod_id(self, config):
+    def test_right_join_with_no_matching_prod_id(self, config: Any) -> None:
         sql_query = """
                SELECT prod_name
                FROM products
@@ -243,7 +245,7 @@ class TestSQLJoins:
 class TestSQLJsonArrayQueries:
     # Fixture to provide the configuration for SQL validation with updated restrictions
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         """Provide the configuration for SQL validation with restriction on prod_category"""
         return {
             "tables": [
@@ -277,7 +279,7 @@ class TestSQLJsonArrayQueries:
         # Additional Fixture for JSON and Array tests
 
     @pytest.fixture(scope="class")
-    def cnn_with_json_and_array(self):
+    def cnn_with_json_and_array(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
@@ -325,7 +327,7 @@ class TestSQLJsonArrayQueries:
             yield conn
 
     # Test Array-like column using JSON with the updated restriction on prod_category
-    def test_array_column_query_with_json(self, cnn_with_json_and_array, config):
+    def test_array_column_query_with_json(self, cnn_with_json_and_array: Any, config: Any) -> None:
         sql_query = """
             SELECT prod_id, prod_name, json_extract(attributes, '$.colors[0]') AS first_color
             FROM products
@@ -335,7 +337,7 @@ class TestSQLJsonArrayQueries:
         assert res["allowed"] is False, res
 
     # Test querying JSON field with the updated restriction on prod_category
-    def test_json_field_query(self, cnn_with_json_and_array, config):
+    def test_json_field_query(self, cnn_with_json_and_array: Any, config: Any) -> None:
         sql_query = """
             SELECT prod_name, json_extract(attributes, '$.size') AS size
             FROM products
@@ -345,7 +347,7 @@ class TestSQLJsonArrayQueries:
         assert res["allowed"] is False, res
 
     # Test for additional restrictions in config
-    def test_restrictions_query(self, cnn_with_json_and_array, config):
+    def test_restrictions_query(self, cnn_with_json_and_array: Any, config: Any) -> None:
         sql_query = """
             SELECT prod_id, prod_name
             FROM products
@@ -355,7 +357,7 @@ class TestSQLJsonArrayQueries:
         assert res["allowed"] is False, res
 
     # Test Array-like column using JSON and filtering based on the array's first element
-    def test_json_array_column_with_filter(self, cnn_with_json_and_array, config):
+    def test_json_array_column_with_filter(self, cnn_with_json_and_array: Any, config: Any) -> None:
         sql_query = """
             SELECT prod_id, prod_name, json_extract(attributes, '$.colors[0]') AS first_color
             FROM products
@@ -365,7 +367,7 @@ class TestSQLJsonArrayQueries:
         assert res["allowed"] is False, res
 
     # Test Array-like column with CROSS JOIN UNNEST (for SQLite support of arrays)
-    def test_array_column_unnest(self, cnn_with_json_and_array, config):
+    def test_array_column_unnest(self, cnn_with_json_and_array: Any, config: Any) -> None:
         sql_query = """
             SELECT prod_id, prod_name, color
             FROM products, json_each(attributes, '$.colors') AS color
@@ -375,7 +377,7 @@ class TestSQLJsonArrayQueries:
         assert res["allowed"] is False, res
 
     # Test Table Alias and JSON Querying (Self-Join with aliases and JSON extraction)
-    def test_self_join_with_alias_and_json(self, cnn_with_json_and_array, config):
+    def test_self_join_with_alias_and_json(self, cnn_with_json_and_array: Any, config: Any) -> None:
         sql_query = """
             SELECT p1.prod_name, p2.prod_name AS related_prod, json_extract(p1.attributes, '$.size') AS p1_size
             FROM products p1
@@ -386,7 +388,7 @@ class TestSQLJsonArrayQueries:
         assert res["allowed"] is False, res
 
     # Test JSON Nested Query with Array Filtering
-    def test_json_nested_array_filtering(self, cnn_with_json_and_array, config):
+    def test_json_nested_array_filtering(self, cnn_with_json_and_array: Any, config: Any) -> None:
         sql_query = """
             SELECT prod_id, prod_name
             FROM products
@@ -395,7 +397,7 @@ class TestSQLJsonArrayQueries:
         res = verify_sql(sql_query, config)
         assert res["allowed"] is False, res
 
-    def test_query_json_array_filter(self, cnn_with_json_and_array, config):
+    def test_query_json_array_filter(self, cnn_with_json_and_array: Any, config: Any) -> None:
         query = """
         SELECT prod_id, prod_name, prod_category, price, attributes
         FROM orders_db.products
@@ -408,7 +410,7 @@ class TestSQLJsonArrayQueries:
         assert len(result) == 1  # Only Product1 should match the color "red"
         assert result[0][1] == "Product1"  # Ensure it's the correct product
 
-    def test_query_json_array_non_matching(self, cnn_with_json_and_array, config):
+    def test_query_json_array_non_matching(self, cnn_with_json_and_array: Any, config: Any) -> None:
         query = """
         SELECT prod_id, prod_name, prod_category, price, attributes
         FROM orders_db.products
@@ -420,7 +422,7 @@ class TestSQLJsonArrayQueries:
         result = cnn_with_json_and_array.execute(query).fetchall()
         assert len(result) == 0  # No product should match the color "yellow"
 
-    def test_query_json_array_multiple_colors(self, cnn_with_json_and_array, config):
+    def test_query_json_array_multiple_colors(self, cnn_with_json_and_array: Any, config: Any) -> None:
         query = """
         SELECT prod_id, prod_name, prod_category, price, attributes
         FROM orders_db.products
@@ -440,7 +442,7 @@ class TestSQLJsonArrayQueries:
 class TestSQLOrderDateBetweenRestrictions:
     # Fixture to provide the configuration for SQL validation with updated restrictions
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         """Provide the configuration for SQL validation with a price range using BETWEEN."""
         return {
             "tables": [
@@ -472,7 +474,7 @@ class TestSQLOrderDateBetweenRestrictions:
 
     # Fixture for setting up an in-memory SQLite database with required tables and sample data
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
@@ -526,7 +528,7 @@ class TestSQLOrderDateBetweenRestrictions:
 
             yield conn
 
-    def test_price_between_valid(self, cnn, config):
+    def test_price_between_valid(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT prod_id, prod_name, price FROM products WHERE price BETWEEN 80 AND 150",
             config,
@@ -538,7 +540,7 @@ class TestSQLOrderDateBetweenRestrictions:
             ],
         )
 
-    def test_count_products_within_price_range(self, cnn, config):
+    def test_count_products_within_price_range(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT COUNT(*) FROM products WHERE price BETWEEN 80 AND 150",
             config,
@@ -546,7 +548,7 @@ class TestSQLOrderDateBetweenRestrictions:
             data=[(3,)],  # Expecting 3 products
         )
 
-    def test_left_join_products_with_orders(self, cnn, config):
+    def test_left_join_products_with_orders(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             """SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity
             FROM products p
@@ -557,7 +559,7 @@ class TestSQLOrderDateBetweenRestrictions:
             data=[("Product A", 1, 10), ("Product B", 2, 5), ("Product C", 3, 7)],
         )
 
-    def test_select_products_below_price_restriction(self, cnn, config):
+    def test_select_products_below_price_restriction(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT prod_name, price FROM products WHERE price < 90",
             config,
@@ -569,7 +571,7 @@ class TestSQLOrderDateBetweenRestrictions:
             data=[("Product B", 80)],
         )
 
-    def test_price_between_and_category_restriction(self, cnn, config):
+    def test_price_between_and_category_restriction(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT prod_id, prod_name, price, prod_category "
             "FROM products "
@@ -582,7 +584,7 @@ class TestSQLOrderDateBetweenRestrictions:
             ],
         )
 
-    def test_group_by_with_price_between(self, cnn, config):
+    def test_group_by_with_price_between(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT COUNT(prod_id) AS product_count, prod_category "
             "FROM products "
@@ -593,7 +595,7 @@ class TestSQLOrderDateBetweenRestrictions:
             data=[(1, "CategoryA")],  # Only Product A fits in this range
         )
 
-    def test_join_with_price_between(self, cnn, config):
+    def test_join_with_price_between(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT o.order_id, p.prod_name, p.price "
             "FROM orders o "
@@ -607,7 +609,7 @@ class TestSQLOrderDateBetweenRestrictions:
             ],
         )
 
-    def test_existent_product_between(self, cnn, config):
+    def test_existent_product_between(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT prod_id, prod_name, price "
             "FROM products "
@@ -617,7 +619,7 @@ class TestSQLOrderDateBetweenRestrictions:
             data=[(1, "Product A", 120.0)],  # No products in this range
         )
 
-    def test_group_by_having_price(self, cnn, config):
+    def test_group_by_having_price(self, cnn: Any, config: Any) -> None:
         verify_sql_test(
             "SELECT prod_category, price "
             "FROM products "
@@ -625,7 +627,8 @@ class TestSQLOrderDateBetweenRestrictions:
             "GROUP BY prod_category",
             config,
             {"Missing restriction for table: products column: price value: [80, 150]"},
-            "SELECT prod_category, price FROM products WHERE (price > 100) AND price BETWEEN 80 AND 150 GROUP BY prod_category",
+            "SELECT prod_category, price FROM products "
+            "WHERE (price > 100) AND price BETWEEN 80 AND 150 GROUP BY prod_category",
             cnn=cnn,
             data=[("CategoryA", 120)],  # Products in CategoryA with price > 100
         )
@@ -633,7 +636,7 @@ class TestSQLOrderDateBetweenRestrictions:
 
 class TestSQLOrderRestrictions:
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             # Create orders table
             conn.execute(
@@ -658,7 +661,7 @@ class TestSQLOrderRestrictions:
             yield conn
 
     @pytest.fixture(scope="class")
-    def config(self):
+    def config(self) -> dict[str, Any]:
         # Assuming self._ALLOWED_ACCOUNT_ID is defined
         self._ALLOWED_ACCOUNT_ID = 124  # Example value for the allowed account ID
         self._TABLE_NAME = "orders"  # Define table name
@@ -680,7 +683,7 @@ class TestSQLOrderRestrictions:
             ]
         }
 
-    def test_in_operator_with_restriction_(self, config, cnn):
+    def test_in_operator_with_restriction_(self, config: Any, cnn: Any) -> None:
         sql = """SELECT product_name FROM orders WHERE account_id IN (123, 124, 125)"""
 
         # Modify the config to handle "value" as "values" just for this specific test case
@@ -703,7 +706,7 @@ class TestSQLOrderRestrictions:
             data=[("Product B",)],
         )
 
-    def test_id_greater_than_122_should_return_error(self, config):
+    def test_id_greater_than_122_should_return_error(self, config: Any) -> None:
         """Test case for ensuring that queries with id >= 123 are invalid"""
 
         # SQL query to test
@@ -715,7 +718,7 @@ class TestSQLOrderRestrictions:
         # Assert that the query is not allowed (should return an error)
         assert res["allowed"] is False, res
 
-    def test_id_greater_return_error(self, config, cnn):
+    def test_id_greater_return_error(self, config: Any, cnn: Any) -> None:
 
         verify_sql_test(
             "SELECT id, product_name FROM orders WHERE id >= 123",

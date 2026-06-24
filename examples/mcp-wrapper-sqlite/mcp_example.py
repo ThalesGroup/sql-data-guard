@@ -13,7 +13,7 @@ def current_directory() -> str:
     return str(Path(__file__).parent.absolute())
 
 
-async def main():
+async def main() -> None:
     model = ChatBedrock(
         model="anthropic.claude-3-5-sonnet-20240620-v1:0",
         region="us-east-1",
@@ -60,7 +60,7 @@ async def main():
     logging.info("Done (main)")
 
 
-def init_logging():
+def init_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

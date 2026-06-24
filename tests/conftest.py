@@ -1,16 +1,17 @@
 from sqlite3 import Connection
+from typing import Any
 
 from sql_data_guard import verify_sql
 
 
 def verify_sql_test(
     sql: str,
-    config: dict,
-    errors: set[str] = None,
-    fix: str = None,
+    config: dict[str, Any],
+    errors: set[str] | None = None,
+    fix: str | None = None,
     dialect: str = "sqlite",
-    cnn: Connection = None,
-    data: list = None,
+    cnn: Connection | None = None,
+    data: list[Any] | None = None,
 ) -> str:
     result = verify_sql(sql, config, dialect)
     if errors is None:

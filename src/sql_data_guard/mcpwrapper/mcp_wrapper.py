@@ -2,14 +2,16 @@ import json
 import os
 import sys
 import threading
+from pathlib import Path
+from typing import Any
 
 import docker
 
 from sql_data_guard import verify_sql
 
 
-def load_config() -> dict:
-    return json.load(open("/conf/config.json"))
+def load_config() -> dict[str, Any]:
+    return json.load(Path("/conf/config.json").open())
 
 
 def _get_volumes() -> list[str]:
@@ -19,7 +21,7 @@ def _get_volumes() -> list[str]:
     return volumes
 
 
-def start_inner_container():
+def start_inner_container() -> Any:
     client = docker.from_env()
     container = client.containers.run(
         config["mcp-server"]["image"],
@@ -36,7 +38,7 @@ def start_inner_container():
         stdout=True,
     )
 
-    def stream_output_inject_response():
+    def stream_output_inject_response() -> None:
         for line in container.logs(stream=True):
             line_json = json.loads(line)
             request_id = line_json["id"]
@@ -54,7 +56,7 @@ def start_inner_container():
             sys.stdout.write(json.dumps(line_json) + "\n")
             sys.stdout.flush()
 
-    def stream_output():
+    def stream_output() -> None:
         for line in container.logs(stream=True):
             sys.stdout.write(line.decode("utf-8"))
             sys.stdout.flush()
@@ -66,7 +68,7 @@ def start_inner_container():
     return container
 
 
-def main():
+def main() -> None:
     container = start_inner_container()
     try:
         socket = container.attach_socket(params={"stdin": True, "stream": True})
@@ -82,7 +84,7 @@ def main():
         container.stop()
 
 
-def get_sql(json_line: dict) -> str | None:
+def get_sql(json_line: dict[str, Any]) -> str | None:
     if json_line["method"] == "tools/call":
         for tool in config["mcp-tools"]:
             if tool["tool-name"] == json_line["params"]["name"]:
@@ -124,5 +126,5 @@ def input_line(line: str) -> str:
 if __name__ == "__main__":
     config = load_config()
     inject_response = config["sql-data-guard"]["inject-response"]
-    errors: dict[int, dict] = {}
+    errors: dict[int, dict[str, Any]] = {}
     main()

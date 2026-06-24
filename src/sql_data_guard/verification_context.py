@@ -1,5 +1,8 @@
 
 
+from typing import Any
+
+
 class VerificationContext:
     """
     Context for verifying SQL queries against a given configuration.
@@ -13,21 +16,21 @@ class VerificationContext:
         _dialect (str): The SQL dialect to use for parsing.
     """
 
-    def __init__(self, config: dict, dialect: str):
+    def __init__(self, config: dict[str, Any], dialect: str | None):
         super().__init__()
         self._can_fix = True
-        self._errors = set()
-        self._fixed = None
+        self._errors: set[str] = set()
+        self._fixed: str | None = None
         self._config = config
         self._dynamic_tables: dict[str, set[str]] = {}
-        self._dialect = dialect
+        self._dialect = dialect or ""
         self._risk: list[float] = []
 
     @property
     def can_fix(self) -> bool:
         return self._can_fix
 
-    def add_error(self, error: str, can_fix: bool, risk: float):
+    def add_error(self, error: str, can_fix: bool, risk: float) -> None:
         self._errors.add(error)
         if not can_fix:
             self._can_fix = False
@@ -42,11 +45,11 @@ class VerificationContext:
         return self._fixed
 
     @fixed.setter
-    def fixed(self, value: str | None):
+    def fixed(self, value: str | None) -> None:
         self._fixed = value
 
     @property
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         return self._config
 
     @property

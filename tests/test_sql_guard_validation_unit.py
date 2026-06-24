@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from sql_data_guard.restriction_validation import (
@@ -6,7 +8,7 @@ from sql_data_guard.restriction_validation import (
 )
 
 
-def test_valid_restrictions():
+def test_valid_restrictions() -> None:
     config = {
         "tables": [
             {
@@ -26,7 +28,7 @@ def test_valid_restrictions():
         pytest.fail(f"Unexpected error: {e}")
 
 
-def test_valid_between_restriction():
+def test_valid_between_restriction() -> None:
     config = {
         "tables": [
             {
@@ -41,7 +43,7 @@ def test_valid_between_restriction():
     validate_restrictions(config)
 
 
-def test_invalid_between_restriction():
+def test_invalid_between_restriction() -> None:
     config = {
         "tables": [
             {
@@ -58,8 +60,8 @@ def test_invalid_between_restriction():
 
 
 # Test to ensure there is at least one table
-def test_no_tables():
-    config = {"tables": []}
+def test_no_tables() -> None:
+    config: dict[str, Any] = {"tables": []}
 
     with pytest.raises(
         ValueError,
@@ -69,7 +71,7 @@ def test_no_tables():
 
 
 # Test to ensure each table has a `table_name`
-def test_missing_table_name():
+def test_missing_table_name() -> None:
     config = {
         "tables": [
             {
@@ -90,7 +92,7 @@ def test_missing_table_name():
 
 
 # Test to ensure there are columns defined for the table
-def test_missing_columns():
+def test_missing_columns() -> None:
     config = {
         "tables": [
             {
@@ -111,7 +113,7 @@ def test_missing_columns():
 
 
 # Test to validate the restriction operation is supported
-def test_unsupported_restriction_operation():
+def test_unsupported_restriction_operation() -> None:
     config = {
         "tables": [
             {
@@ -131,7 +133,7 @@ def test_unsupported_restriction_operation():
         validate_restrictions(config)
 
 
-def test_valid_greater_than_equal_restriction():
+def test_valid_greater_than_equal_restriction() -> None:
     config = {
         "tables": [
             {
@@ -154,7 +156,7 @@ def test_valid_greater_than_equal_restriction():
         pytest.fail(f"Unexpected error: {e}")
 
 
-def test_valid_greater_than_equal_with_float_value():
+def test_valid_greater_than_equal_with_float_value() -> None:
     config = {
         "tables": [
             {

@@ -1,28 +1,28 @@
 import datetime
 import hashlib
 import hmac
-import http
+import http.client
 import json
 import logging
 import os
 import pprint
 import urllib.parse
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 _DEFAULT_MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
-_PROJECT_FOLDER = Path(os.path.dirname(os.path.abspath(__file__))).parent.absolute()
+_PROJECT_FOLDER = Path(__file__).resolve().parent.parent.absolute()
 
 
 def get_project_folder() -> str:
     return str(_PROJECT_FOLDER)
 
 
-def init_env_from_file():
-    full_file_name = os.path.join(get_project_folder(), "config", "aws.env.list")
-    if os.path.exists(full_file_name):
+def init_env_from_file() -> None:
+    full_file_name = Path(get_project_folder()) / "config" / "aws.env.list"
+    if full_file_name.exists():
         logging.info(f"Going to set env variables from file: {full_file_name}")
-        with open(full_file_name) as f:
+        with full_file_name.open() as f:
             for line in f:
                 key, value = line.strip().split("=")
                 os.environ[key] = value
@@ -36,7 +36,7 @@ def get_model_ids() -> list[str]:
 
 
 def invoke_llm(
-    system_prompt: Optional[None], user_prompt: str, model_id: str = _DEFAULT_MODEL_ID
+    system_prompt: str | None, user_prompt: str, model_id: str = _DEFAULT_MODEL_ID
 ) -> str:
     logging.info(f"Going to invoke LLM. Model ID: {model_id}")
     prompt = _format_model_body(user_prompt, system_prompt, model_id)
@@ -46,7 +46,7 @@ def invoke_llm(
     return response_text
 
 
-def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
+def _invoke_bedrock_model(prompt_body: dict[str, Any], model_id: str) -> dict[str, Any]:
     region = os.environ["AWS_DEFAULT_REGION"]
     access_key = os.environ["AWS_ACCESS_KEY_ID"]
     secret_key = os.environ["AWS_SECRET_ACCESS_KEY"]
@@ -84,7 +84,7 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
         f"{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
     )
 
-    def sign(key, msg):
+    def sign(key: bytes, msg: str) -> bytes:
         return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
 
     k_date = sign(("AWS4" + secret_key).encode("utf-8"), date_stamp)
@@ -123,7 +123,7 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
 
 def _format_model_body(
     prompt: str, system_prompt: str | None, model_id: str
-) -> dict:
+) -> dict[str, Any]:
     if system_prompt is None:
         system_prompt = "You are a SQL generator helper"
     if "claude" in model_id:
@@ -152,10 +152,9 @@ def _format_model_body(
     return body
 
 
-def _get_response_content(response_json: dict, model_id: str) -> str:
+def _get_response_content(response_json: dict[str, Any], model_id: str) -> str:
     if "claude" in model_id:
         return response_json["content"][0]["text"]
-    elif "jamba" in model_id:
+    if "jamba" in model_id:
         return response_json["choices"][0]["message"]["content"]
-    else:
-        raise ValueError(f"Unknown model_id: {model_id}")
+    raise ValueError(f"Unknown model_id: {model_id}")

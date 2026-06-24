@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from typing import Any
 
 import duckdb
 import pytest
@@ -9,7 +10,7 @@ from sql_data_guard import verify_sql
 
 def _fetch_dict(
     con: duckdb.DuckDBPyConnection, query: str
-) -> Generator[dict]:
+) -> Generator[dict[str, Any]]:
     handle = con.sql(query)
     while batch := handle.fetchmany(100):
         for row in batch:
@@ -18,21 +19,22 @@ def _fetch_dict(
 
 def _verify_sql_test_duckdb(
     sql: str,
-    config: dict,
-    errors: set[str] = None,
-    fix: str = None,
-    cnn: duckdb.DuckDBPyConnection = None,
-    data: list = None,
-):
+    config: dict[str, Any],
+    errors: set[str] | None = None,
+    fix: str | None = None,
+    cnn: duckdb.DuckDBPyConnection | None = None,
+    data: list[Any] | None = None,
+) -> None:
     sql_to_use = verify_sql_test(sql, config, errors, fix, "duckdb")
-    query_result = _fetch_dict(cnn, sql_to_use)
-    if data is not None:
-        assert list(query_result) == data
+    if cnn is not None:
+        query_result = _fetch_dict(cnn, sql_to_use)
+        if data is not None:
+            assert list(query_result) == data
 
 
 class TestDuckdbDialect:
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[duckdb.DuckDBPyConnection]:
         with duckdb.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS football_db")
 
@@ -77,7 +79,7 @@ class TestDuckdbDialect:
             yield conn
 
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         return {
             "tables": [
                 {
@@ -106,14 +108,14 @@ class TestDuckdbDialect:
             ]
         }
 
-    def test_access_not_allowed(self, config):
+    def test_access_not_allowed(self, config: dict[str, Any]) -> None:
         _verify_sql_test_duckdb(
             "SELECT * FROM test_table",
             config,
             errors={"Table test_table is not allowed"},
         )
 
-    def test_access_with_restriction_pass(self, config, cnn):
+    def test_access_with_restriction_pass(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             """SELECT name, position from players WHERE name = 'Ronaldo' AND position = 'CF' """,
             config,
@@ -121,7 +123,7 @@ class TestDuckdbDialect:
             data=[{"name": "Ronaldo", "position": "CF"}],
         )
 
-    def test_access_with_restriction(self, config, cnn):
+    def test_access_with_restriction(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             """SELECT p.name, p.position, s.goals from players p join stats s on
             p.name = s.player_name where p.name = 'Ronaldo' and p.position = 'CF' and s.assists = 234 """,
@@ -130,14 +132,14 @@ class TestDuckdbDialect:
             data=[{"name": "Ronaldo", "position": "CF", "goals": 1030}],
         )
 
-    def test_insertion_not_allowed(self, config):
+    def test_insertion_not_allowed(self, config: dict[str, Any]) -> None:
         _verify_sql_test_duckdb(
             "INSERT into players values('Lewandowski', 9, 'CF', 'Poland' )",
             config,
             errors={"INSERT statement is not allowed"},
         )
 
-    def test_access_restricted(self, config, cnn):
+    def test_access_restricted(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             """SELECT goals from stats where assists = 234""",
             config,
@@ -145,7 +147,7 @@ class TestDuckdbDialect:
             data=[{"goals": 1030}],
         )
 
-    def test_aggregate_sum_goals(self, config, cnn):
+    def test_aggregate_sum_goals(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             "SELECT sum(goals) from stats where assists = 234",
             config,
@@ -153,7 +155,7 @@ class TestDuckdbDialect:
             data=[{"sum(goals)": 1030}],
         )
 
-    def test_aggregate_sum_assists_condition(self, config, cnn):
+    def test_aggregate_sum_assists_condition(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             "select sum(assists) from stats WHERE assists = 234",
             config,
@@ -161,14 +163,14 @@ class TestDuckdbDialect:
             data=[{"sum(assists)": 234}],
         )
 
-    def test_update_not_allowed(self, config):
+    def test_update_not_allowed(self, config: dict[str, Any]) -> None:
         _verify_sql_test_duckdb(
             "UPDATE players SET national_team = 'Portugal' WHERE name = 'Messi'",
             config,
             errors={"UPDATE statement is not allowed"},
         )
 
-    def test_inner_join(self, config, cnn):
+    def test_inner_join(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             """
             SELECT p.name, s.assists
@@ -181,7 +183,7 @@ class TestDuckdbDialect:
             data=[{"name": "Ronaldo", "assists": 234}],
         )
 
-    def test_cross_join_not_allowed(self, config):
+    def test_cross_join_not_allowed(self, config: dict[str, Any]) -> None:
         res = verify_sql(
             """
             SELECT p.name, s.trophies
@@ -196,7 +198,7 @@ class TestDuckdbDialect:
             in res["errors"]
         )
 
-    def test_cross_join_allowed(self, config, cnn):
+    def test_cross_join_allowed(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             """
             SELECT p.name, s.trophies
@@ -209,7 +211,7 @@ class TestDuckdbDialect:
             data=[{"name": "Ronaldo", "trophies": 37}],
         )
 
-    def test_complex_join_query(self, config, cnn):
+    def test_complex_join_query(self, config: dict[str, Any], cnn: duckdb.DuckDBPyConnection) -> None:
         _verify_sql_test_duckdb(
             """
                     SELECT p.name, p.jersey_no, p.age, s.goals,

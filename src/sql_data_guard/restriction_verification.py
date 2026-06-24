@@ -1,4 +1,6 @@
 
+from typing import Any
+
 import sqlglot
 import sqlglot.expressions as expr
 
@@ -10,7 +12,7 @@ def verify_restrictions(
     select_statement: expr.Query,
     context: VerificationContext,
     from_tables: list[expr.Table],
-):
+) -> None:
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
         where_clause = select_statement.find(expr.Where)
@@ -33,8 +35,10 @@ def verify_restrictions(
                     else:
                         t_prefix = ""
 
+                    val_desc = r.get("values", r.get("value"))
                     context.add_error(
-                        f"Missing restriction for table: {c_t['table_name']} column: {t_prefix}{r['column']} value: {r.get('values', r.get('value'))}",
+                        f"Missing restriction for table: {c_t['table_name']} "
+                        f"column: {t_prefix}{r['column']} value: {val_desc}",
                         True,
                         0.5,
                     )
@@ -54,8 +58,8 @@ def verify_restrictions(
 
 
 def _create_new_condition(
-    context: VerificationContext, restriction: dict, table_prefix: str
-) -> expr.Expression:
+    context: VerificationContext, restriction: dict[str, Any], table_prefix: str
+) -> Any:
     """
     Used to create a restriction condition for a given restriction.
 
@@ -81,22 +85,20 @@ def _create_new_condition(
             if "value" in restriction
             else str(restriction["values"])[1:-1]
         )
-    new_condition = sqlglot.parse_one(
+    return sqlglot.parse_one(
         f"{table_prefix}{restriction['column']} {operator} {operand}",
         dialect=context.dialect,
     )
-    return new_condition
 
 
-def _format_value(value):
+def _format_value(value: Any) -> Any:
     if isinstance(value, str):
         return f"'{value}'"
-    else:
-        return value
+    return value
 
 
 def _verify_restriction(
-    restriction: dict, from_table: expr.Table, exp: expr.Expression
+    restriction: dict[str, Any], from_table: expr.Table, exp: expr.Expression
 ) -> bool:
     """
     Verifies if a given restriction is satisfied within an SQL expression.
@@ -146,23 +148,19 @@ def _verify_restriction(
     ):
         if restriction.get("operation") not in [">=", ">", "<=", "<"]:
             return False
-        assert len(values) == 1
+        if len(values) != 1:
+            return False
         if isinstance(exp, expr.LT) and restriction["operation"] == "<":
             return str(exp.right.this) < values[0]
-        elif isinstance(exp, expr.LTE) and restriction["operation"] == "<=":
+        if isinstance(exp, expr.LTE) and restriction["operation"] == "<=":
             return str(exp.right.this) <= values[0]
-        elif isinstance(exp, expr.GT) and restriction["operation"] == ">":
+        if isinstance(exp, expr.GT) and restriction["operation"] == ">":
             return str(exp.right.this) > values[0]
-        elif isinstance(exp, expr.GTE) and restriction["operation"] == ">=":
+        if isinstance(exp, expr.GTE) and restriction["operation"] == ">=":
             return str(exp.right.this) >= values[0]
-        else:
-            return False
+        return False
     return False
 
 
-def _get_restriction_values(restriction: dict) -> list[str]:
-    if "values" in restriction:
-        values = [str(v) for v in restriction["values"]]
-    else:
-        values = [str(restriction["value"])]
-    return values
+def _get_restriction_values(restriction: dict[str, Any]) -> list[str]:
+    return [str(v) for v in restriction["values"]] if "values" in restriction else [str(restriction["value"])]

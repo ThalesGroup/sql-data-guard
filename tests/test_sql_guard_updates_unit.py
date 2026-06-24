@@ -1,4 +1,6 @@
 import sqlite3
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from conftest import verify_sql_test
@@ -8,7 +10,7 @@ from sql_data_guard import verify_sql
 
 class TestInvalidQueries:
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
@@ -57,7 +59,7 @@ class TestInvalidQueries:
             yield conn
 
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         return {
             "tables": [
                 {
@@ -92,7 +94,7 @@ class TestInvalidQueries:
             ]
         }
 
-    def test_access_denied(self, config):
+    def test_access_denied(self, config: Any) -> None:
         result = verify_sql(
             """SELECT id, prod_name FROM products1
         WHERE id = 324 AND access = 'granted' AND date = '27-02-2025'
@@ -103,7 +105,7 @@ class TestInvalidQueries:
             result
         )  # changed from select id, prod_name to this query
 
-    def test_restricted_access(self, config):
+    def test_restricted_access(self, config: Any) -> None:
         result = verify_sql(
             """SELECT id, prod_name, deliver, access, date, cust_id
         FROM products1 WHERE access = 'granted'
@@ -112,12 +114,12 @@ class TestInvalidQueries:
         )  # Changed from select * to this query
         assert result["allowed"], result
 
-    def test_invalid_query1(self, config):
+    def test_invalid_query1(self, config: Any) -> None:
         res = verify_sql("SELECT I from H", config)
         assert not res["allowed"]  # gives error only when invalid table is mentioned
         assert "Table H is not allowed" in res["errors"]
 
-    def test_invalid_select(self, config):
+    def test_invalid_select(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name, deliver FROM
         products1 WHERE id = 324 AND access = 'granted'
@@ -129,7 +131,7 @@ class TestInvalidQueries:
         )  # changed from select id, prod_name, deliver from products1 where id = 324 to this
 
     # checking error
-    def test_invalid_select_error_check(self, config):
+    def test_invalid_select_error_check(self, config: Any) -> None:
         res = verify_sql(
             """select id, prod_name, deliver from products1 where id = 324 """, config
         )
@@ -147,7 +149,7 @@ class TestInvalidQueries:
             in res["errors"]
         )
 
-    def test_missing_col(self, config):
+    def test_missing_col(self, config: Any) -> None:
         res = verify_sql("SELECT prod_details from products1 where id = 324", config)
         assert not res["allowed"]
         assert (
@@ -155,7 +157,7 @@ class TestInvalidQueries:
             in res["errors"]
         )
 
-    def test_insert_row_not_allowed(self, config):
+    def test_insert_row_not_allowed(self, config: Any) -> None:
         res = verify_sql(
             "INSERT into products1 values(554, 'prod4', 'shipped', 'granted', '28-02-2025', 'c2')",
             config,
@@ -163,7 +165,7 @@ class TestInvalidQueries:
         assert not res["allowed"], res
         assert "INSERT statement is not allowed" in res["errors"], res
 
-    def test_insert_row_not_allowed1(self, config):
+    def test_insert_row_not_allowed1(self, config: Any) -> None:
         res = verify_sql(
             "INSERT into products1 values(645, 'prod5', 'shipped', 'granted', '28-02-2025', 'c2')",
             config,
@@ -171,7 +173,7 @@ class TestInvalidQueries:
         assert not res["allowed"], res
         assert "INSERT statement is not allowed" in res["errors"], res
 
-    def test_missing_restriction(self, config, cnn):
+    def test_missing_restriction(self, config: Any, cnn: Any) -> None:
         cursor = cnn.cursor()
         sql = "SELECT id, prod_name FROM products1 WHERE id = 324"
         cursor.execute(sql)
@@ -183,7 +185,7 @@ class TestInvalidQueries:
         # cursor.execute(result["fixed"])
         # assert cursor.fetchall() == [(324, "prod1")]
 
-    def test_using_cnn(self, config, cnn):
+    def test_using_cnn(self, config: Any, cnn: Any) -> None:
         cursor = cnn.cursor()
         sql = (
             "SELECT id, prod_name FROM products1 WHERE id = 324 and access = 'granted' "
@@ -197,7 +199,7 @@ class TestInvalidQueries:
         # cursor.execute(res["fixed"])
         # assert cursor.fetchall() == [(324, "prod1")]
 
-    def test_update_value(self, config):
+    def test_update_value(self, config: Any) -> None:
         res = verify_sql("Update products1 set id = 224 where id = 324", config)
         assert not res["allowed"], res
         assert "UPDATE statement is not allowed" in res["errors"]
@@ -205,7 +207,7 @@ class TestInvalidQueries:
 
 class TestJoins:
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
@@ -289,7 +291,7 @@ class TestJoins:
             yield conn
 
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         return {
             "tables": [
                 {
@@ -322,18 +324,18 @@ class TestJoins:
             ]
         }
 
-    def test_restriction_passed(self, config):
+    def test_restriction_passed(self, config: Any) -> None:
         res = verify_sql(
             'SELECT id, prod_name from products1 where id = 324 and access = "granted" ',
             config,
         )
         assert res["allowed"], res
 
-    def test_restriction_restricted(self, config):
+    def test_restriction_restricted(self, config: Any) -> None:
         res = verify_sql("SELECT id, prod_name from products1 where id = 435", config)
         assert not res["allowed"], res
 
-    def test_inner_join_on_id(self, config):
+    def test_inner_join_on_id(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name FROM products1
          INNER JOIN customers ON products1.id = customers.id
@@ -342,7 +344,7 @@ class TestJoins:
         )
         assert res["allowed"], res
 
-    def test_full_outer_join(self, config):
+    def test_full_outer_join(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name from products1
         FULL OUTER JOIN customers on products1.id = customers.id
@@ -351,7 +353,7 @@ class TestJoins:
         )
         assert res["allowed"], res
 
-    def test_right_join(self, config):
+    def test_right_join(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name FROM products1
          RIGHT JOIN customers ON products1.id = customers.id
@@ -360,7 +362,7 @@ class TestJoins:
         )
         assert res["allowed"], res
 
-    def test_left_join(self, config):
+    def test_left_join(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name FROM products1
                  LEFT JOIN customers ON products1.id = customers.id
@@ -369,7 +371,7 @@ class TestJoins:
         )
         assert res["allowed"], res
 
-    def test_union(self, config):
+    def test_union(self, config: Any) -> None:
         res = verify_sql(
             """select id from products1
         union select id from customers""",
@@ -381,7 +383,7 @@ class TestJoins:
             in res["errors"]
         )
 
-    def test_inner_join_fail(self, config):
+    def test_inner_join_fail(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name FROM products1
          INNER JOIN customers ON products1.id = customers.id
@@ -394,7 +396,7 @@ class TestJoins:
             in res["errors"]
         )
 
-    def test_full_outer_join_fail(self, config):
+    def test_full_outer_join_fail(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name from products1
         FULL OUTER JOIN customers on products1.id = customers.id
@@ -407,7 +409,7 @@ class TestJoins:
             in res["errors"]
         )
 
-    def test_right_join_fail(self, config):
+    def test_right_join_fail(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name FROM products1
          RIGHT JOIN customers ON products1.id = customers.id
@@ -420,7 +422,7 @@ class TestJoins:
             in res["errors"]
         )
 
-    def test_left_join_fail(self, config):
+    def test_left_join_fail(self, config: Any) -> None:
         res = verify_sql(
             """SELECT id, prod_name FROM products1
                  LEFT JOIN customers ON products1.id = customers.id
@@ -433,26 +435,30 @@ class TestJoins:
             in res["errors"]
         )
 
-    def test_inner_join_using_test_sql(self, config):
+    def test_inner_join_using_test_sql(self, config: Any) -> None:
         verify_sql_test(
-            "SELECT id, prod_name FROM products1 INNER JOIN customers USING (id) WHERE id = 324 AND access = 'restricted' ",
+            "SELECT id, prod_name FROM products1 INNER JOIN customers USING (id) "
+            "WHERE id = 324 AND access = 'restricted' ",
             config,
         )
 
-    def test_inner_join_on_test_sql(self, config):
+    def test_inner_join_on_test_sql(self, config: Any) -> None:
         verify_sql_test(
             """SELECT id, prod_name FROM products1 INNER JOIN
         customers on products1.id = customers.id WHERE id = 324 AND access = 'restricted' """,
             config,
         )
 
-    def test_distinct_id_group_by(self, config, cnn):
-        sql = """SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 WHERE id = 324 and access = 'granted'  GROUP BY id"""
+    def test_distinct_id_group_by(self, config: Any, cnn: Any) -> None:
+        sql = (
+            "SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 "
+            "WHERE id = 324 and access = 'granted'  GROUP BY id"
+        )
         res = verify_sql(sql, config)
         assert res["allowed"], res
         assert cnn.execute(sql).fetchall() == [(1, "prod1")]
 
-    def test_distinct_and_group_by_missing_restriction(self, config, cnn):
+    def test_distinct_and_group_by_missing_restriction(self, config: Any, cnn: Any) -> None:
         sql = """SELECT COUNT(DISTINCT id) AS prods_count, prod_name FROM products1 GROUP BY id"""
         verify_sql_test(
             sql,
@@ -463,7 +469,7 @@ class TestJoins:
             data=[(1, "prod1")],
         )
 
-    def test_array_col(self, config, cnn):
+    def test_array_col(self, config: Any, cnn: Any) -> None:
         sql = """
         SELECT id, prod_name FROM products2
         WHERE (category LIKE '%electronics%') AND id = 324
@@ -472,29 +478,29 @@ class TestJoins:
         assert res["allowed"], res
         assert cnn.execute(sql).fetchall() == [(324, "prod1")]
 
-    def test_cross_join_alias(self, config, cnn):
+    def test_cross_join_alias(self, config: Any, cnn: Any) -> None:
         sql = """SELECT p1.id, p2.id FROM products1 AS p1
         CROSS JOIN products1 AS p2 WHERE p1.id = 324 AND p2.id = 324"""
         res = verify_sql(sql, config)
         assert res["allowed"], res
 
-    def test_self_join(self, config, cnn):
+    def test_self_join(self, config: Any, cnn: Any) -> None:
         sql = """SELECT p1.id, p2.id from products1 as p1
         inner join products1 as p2 on p1.id = p2.id WHERE p1.id = 324 and p2.id = 324"""
         res = verify_sql(sql, config)
         assert res["allowed"], res
 
-    def test_customers_restriction(self, config):
+    def test_customers_restriction(self, config: Any) -> None:
         sql = "SELECT cust_id, cust_name FROM customers WHERE (cust_id = 'c1') AND access = 'restricted'"
         res = verify_sql(sql, config)
         assert res["allowed"], res
 
-    def test_json_field_products1(self, config, cnn):
+    def test_json_field_products1(self, config: Any, cnn: Any) -> None:
         sql = "SELECT json_extract(category, '$[0]') FROM products2 WHERE id = 324"
         res = verify_sql(sql, config)
         assert res["allowed"], res
 
-    def test_unnest_using_trino_array_val_cross_join(self, config):
+    def test_unnest_using_trino_array_val_cross_join(self, config: Any) -> None:
         verify_sql_test(
             """SELECT val FROM (VALUES (ARRAY[1, 2, 3]))
         AS highlights(vals) CROSS JOIN UNNEST(vals) AS t(val)""",
@@ -502,7 +508,7 @@ class TestJoins:
             dialect="trino",
         )
 
-    def test_unnest_using_trino_insert(self, config):
+    def test_unnest_using_trino_insert(self, config: Any) -> None:
         verify_sql_test(
             "INSERT INTO highlights VALUES (1, ARRAY[10, 20, 30])",
             config,
@@ -510,28 +516,28 @@ class TestJoins:
             errors={"INSERT statement is not allowed"},
         )
 
-    def test_unnest_using_trino_cross_join(self, config):
+    def test_unnest_using_trino_cross_join(self, config: Any) -> None:
         verify_sql_test(
             "SELECT t.val FROM highlights CROSS JOIN UNNEST(vals) AS t(val)",
             config,
             dialect="trino",
         )
 
-    def test_unnest_using_trino_multi_col_alias(self, config):
+    def test_unnest_using_trino_multi_col_alias(self, config: Any) -> None:
         verify_sql_test(
             "SELECT t.val, h.id FROM highlights AS h CROSS JOIN UNNEST(h.vals) AS t(val)",
             config,
             dialect="trino",
         )
 
-    def test_unnest_using_trino_no_alias(self, config):
+    def test_unnest_using_trino_no_alias(self, config: Any) -> None:
         verify_sql_test(
             "SELECT anomalies from highlights CROSS JOIN UNNEST(vals)",
             config,
             dialect="trino",
         )
 
-    def test_between_operation(self, config, cnn):
+    def test_between_operation(self, config: Any, cnn: Any) -> None:
         sql = "SELECT id from products1 where date between '26-02-2025' and '28-02-2025' and id = 324"
         res = verify_sql(sql, config)
         assert res["allowed"], res
@@ -539,7 +545,7 @@ class TestJoins:
 
 class TestMultipleRestriction:
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             conn.execute("ATTACH DATABASE ':memory:' AS orders_db")
 
@@ -623,7 +629,7 @@ class TestMultipleRestriction:
             yield conn
 
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         return {
             "tables": [
                 {
@@ -660,7 +666,7 @@ class TestMultipleRestriction:
             ]
         }
 
-    def test_basic_query_value_inside_in_clause_using_eq(self, config, cnn):
+    def test_basic_query_value_inside_in_clause_using_eq(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             "SELECT id FROM products1 WHERE id = 324 and id IN (324, 224)",
             config,
@@ -668,7 +674,7 @@ class TestMultipleRestriction:
             data=[["324"]],
         )
 
-    def test_basic_query_value_inside_in_clause_using_in(self, config, cnn):
+    def test_basic_query_value_inside_in_clause_using_in(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             "SELECT id FROM products1 WHERE id IN (324)",
             config,
@@ -676,7 +682,7 @@ class TestMultipleRestriction:
             data=[["324"]],
         )
 
-    def test_basic_query_value_not_inside_in_clause(self, config, cnn):
+    def test_basic_query_value_not_inside_in_clause(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             "SELECT id FROM products1 WHERE id = 999",
             config=config,
@@ -688,7 +694,7 @@ class TestMultipleRestriction:
             data=[],
         )
 
-    def test_query_with_in_operator(self, config, cnn):
+    def test_query_with_in_operator(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             """SELECT id FROM products1 WHERE id IN (324, 224)""",
             config,
@@ -696,7 +702,7 @@ class TestMultipleRestriction:
             data=[["324"]],
         )
 
-    def test_with_in_operator2(self, config, cnn):
+    def test_with_in_operator2(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             """SELECT id FROM products1 WHERE id IN (324, 233)""",
             config,
@@ -708,7 +714,7 @@ class TestMultipleRestriction:
             data=[["324"]],
         )
 
-    def test_in_operator_with_or(self, config, cnn):
+    def test_in_operator_with_or(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             """SELECT id FROM products1 WHERE id IN (324, 224) OR prod_name = 'prod3'""",
             config,
@@ -723,7 +729,7 @@ class TestMultipleRestriction:
             ],
         )
 
-    def test_in_operator_with_numeric_values(self, config, cnn):
+    def test_in_operator_with_numeric_values(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             """SELECT id FROM products2 WHERE id IN (324, 224) AND category IN ('electronics', 'furniture')""",
             config,
@@ -731,7 +737,7 @@ class TestMultipleRestriction:
             data=[],
         )
 
-    def test_in_operator_with_between(self, config, cnn):
+    def test_in_operator_with_between(self, config: Any, cnn: Any) -> None:
         verify_sql_test(
             """SELECT id FROM products1 WHERE id in (324, 224) AND date BETWEEN '2024-01-01' AND '2025-01-01' """,
             config,

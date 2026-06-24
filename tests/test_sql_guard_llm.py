@@ -1,5 +1,7 @@
 import json
 import sqlite3
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from test_utils import get_model_ids, init_env_from_file, invoke_llm
@@ -8,7 +10,7 @@ from sql_data_guard import verify_sql
 
 
 @pytest.fixture(autouse=True, scope="module")
-def set_evn():
+def set_evn() -> Generator[None]:
     init_env_from_file()
     yield
 
@@ -21,20 +23,20 @@ class TestQueryUsingLLM:
     ]
 
     @pytest.fixture(scope="class")
-    def cnn(self):
+    def cnn(self) -> Generator[Any]:
         with sqlite3.connect(":memory:") as conn:
             conn.execute(
                 f"CREATE TABLE {self._TABLE_NAME} (id INT, "
                 "product_name TEXT, account_id INT, status TEXT, not_allowed TEXT)"
             )
             conn.execute(
-                f"INSERT INTO orders VALUES ({self._ACCOUNT_ID}, 'product1', 123, 'shipped', 'not_allowed')"
+                f"INSERT INTO orders VALUES ({self._ACCOUNT_ID}, 'product1', 123, 'shipped', 'not_allowed')"  # noqa: S608
             )
             conn.execute(
                 "INSERT INTO orders VALUES (124, 'product2', 124, 'pending', 'not_allowed')"
             )
 
-            def dict_factory(cursor, row):
+            def dict_factory(cursor: Any, row: Any) -> dict[str, Any]:
                 d = {}
                 for idx, col in enumerate(cursor.description):
                     d[col[0]] = row[idx]
@@ -44,7 +46,7 @@ class TestQueryUsingLLM:
             yield conn
 
     @staticmethod
-    def _get_table_metadata(table: str, cnn) -> str:
+    def _get_table_metadata(table: str, cnn: Any) -> str:
         cursor = cnn.cursor()
         cursor.execute(f"PRAGMA table_info({table})")
         columns = cursor.fetchall()
@@ -52,14 +54,14 @@ class TestQueryUsingLLM:
         return json.dumps(metadata, indent=2)
 
     @staticmethod
-    def _format_hints():
+    def _format_hints() -> str:
         result = ""
         for idx, h in enumerate(TestQueryUsingLLM._HINTS):
             result += f"{idx + 1}. {h}\n"
         return result
 
     def _build_prompt(
-        self, question: str, use_system_prompt: bool, cnn
+        self, question: str, use_system_prompt: bool, cnn: Any
     ) -> tuple[str | None, str]:
         system_prompt = f"""<instructions>
         I have a table with the columns matching metadata below. The table name is {TestQueryUsingLLM._TABLE_NAME}.
@@ -79,11 +81,10 @@ class TestQueryUsingLLM:
         user_prompt = f"User question: {question}"
         if use_system_prompt:
             return system_prompt, user_prompt
-        else:
-            return None, f"{system_prompt}\n\n{user_prompt}"
+        return None, f"{system_prompt}\n\n{user_prompt}"
 
     @pytest.fixture(scope="class")
-    def config(self) -> dict:
+    def config(self) -> dict[str, Any]:
         return {
             "tables": [
                 {
@@ -95,7 +96,7 @@ class TestQueryUsingLLM:
             ]
         }
 
-    def test_llm_flow(self, cnn):
+    def test_llm_flow(self, cnn: Any) -> None:
         system_prompt, user_prompt = self._build_prompt(
             "What are the product names?", False, cnn
         )
@@ -110,9 +111,7 @@ class TestQueryUsingLLM:
     )
     @pytest.mark.parametrize("use_system_prompt", [False, True])
     @pytest.mark.parametrize("model_id", get_model_ids())
-    def test_sql_guard_flow(
-        self, question: str, use_system_prompt: bool, model_id: str, cnn, config
-    ):
+    def test_sql_guard_flow(self, question: str, use_system_prompt: bool, model_id: str, cnn: Any, config: Any) -> None:
         system_prompt, user_prompt = self._build_prompt(
             question, use_system_prompt, cnn
         )
@@ -135,9 +134,7 @@ class TestQueryUsingLLM:
     )
     @pytest.mark.parametrize("use_system_prompt", [False, True])
     @pytest.mark.parametrize("model_id", get_model_ids())
-    def test_no_fix(
-        self, question: str, use_system_prompt: bool, model_id: str, cnn, config
-    ):
+    def test_no_fix(self, question: str, use_system_prompt: bool, model_id: str, cnn: Any, config: Any) -> None:
         system_prompt, user_prompt = self._build_prompt(
             question, use_system_prompt, cnn
         )

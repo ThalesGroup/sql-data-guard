@@ -1,8 +1,11 @@
+from typing import Any
+
+
 class UnsupportedRestrictionError(Exception):
     pass
 
 
-def validate_restrictions(config: dict):
+def validate_restrictions(config: dict[str, Any]) -> None:
     """
     Validates the restrictions in the configuration to ensure only supported operations are used.
 
@@ -53,7 +56,9 @@ def validate_restrictions(config: dict):
                     and values[0] < values[1]
                 ):
                     raise ValueError(
-                        f"Invalid 'BETWEEN' format. Expected list of two numeric values where min < max. Received: {values}"
+                        "Invalid 'BETWEEN' format. "
+                        "Expected list of two numeric values where min < max. "
+                        f"Received: {values}"
                     )
 
             elif operation == "IN":
@@ -72,7 +77,8 @@ def validate_restrictions(config: dict):
                 value = restriction.get("value")
                 if not isinstance(value, (int, float)):
                     raise ValueError(
-                        f"Invalid restriction value type for column '{restriction['column']}' in table '{table['table_name']}'. Expected a numeric value."
+                        f"Invalid restriction value type for column '{restriction['column']}' "
+                        f"in table '{table['table_name']}'. Expected a numeric value."
                     )
 
             elif operation and operation.lower() not in supported_operations:

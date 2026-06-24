@@ -47,7 +47,7 @@ class SqlDataGuardTool(Tool):
         try:
             config_dict = json.loads(config)
         except json.decoder.JSONDecodeError as e:
-            raise ValueError(f"Invalid config JSON: {e}")
+            raise ValueError(f"Invalid config JSON: {e}") from e
 
         result = verify_sql(sql, config_dict, dialect)
         yield self.create_variable_message("allowed", result.get("allowed", False))

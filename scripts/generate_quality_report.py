@@ -1,30 +1,35 @@
 #!/usr/bin/env python3
+import contextlib
 import os
-import subprocess
-import xml.etree.ElementTree as ET
 import re
+import subprocess
+import xml.etree.ElementTree as ET  # noqa: S314
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 
-def run_command(cmd, env=None):
+def run_command(cmd: list[str], env: dict[str, str] | None = None) -> tuple[str, str, int]:
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env)  # noqa: S603
         return res.stdout, res.stderr, res.returncode
     except Exception as e:
         return "", str(e), -1
 
 
-def check_ruff():
+def check_ruff() -> list[str]:
     cmd = ["uv", "run", "ruff", "check", "src/"]
     stdout, stderr, code = run_command(cmd)
     issues = []
     for line in stdout.splitlines():
+        if "All checks passed!" in line:
+            continue
         if line.strip():
             issues.append(line.strip())
     return issues
 
 
-def check_pytest():
+def check_pytest() -> tuple[float, float, int, int, Any]:
     env = os.environ.copy()
     env["PYTHONPATH"] = "src"
     cmd = [
@@ -40,7 +45,7 @@ def check_pytest():
     stdout, stderr, code = run_command(cmd, env=env)
 
     # Check if pytest failed completely
-    if code != 0 and not os.path.exists("coverage.xml"):
+    if code != 0 and not Path("coverage.xml").exists():
         return 0.0, 0.0, 0, 1, ["Pytest failed to run. Error: " + stderr]
 
     line_cov = 0.0
@@ -48,7 +53,7 @@ def check_pytest():
     file_coverages = []
 
     try:
-        tree = ET.parse("coverage.xml")
+        tree = ET.parse("coverage.xml")  # noqa: S314
         root = tree.getroot()
         line_cov = float(root.attrib.get("line-rate", 0)) * 100
         branch_cov = float(root.attrib.get("branch-rate", 0)) * 100
@@ -69,7 +74,6 @@ def check_pytest():
     match = re.search(r"(\d+) passed", stdout)
     if match:
         passed = int(match.group(1))
-    print("test match %s", stdout)
     match_failed = re.search(r"(\d+) failed", stdout)
     if match_failed:
         failed = int(match_failed.group(1))
@@ -77,7 +81,7 @@ def check_pytest():
     return line_cov, branch_cov, passed, failed, file_coverages
 
 
-def check_interrogate():
+def check_interrogate() -> tuple[float, list[str]]:
     cmd = ["uv", "run", "interrogate", "-vv", "src/"]
     stdout, stderr, code = run_command(cmd)
 
@@ -90,10 +94,8 @@ def check_interrogate():
             parts = [p.strip() for p in line.split("|") if p.strip()]
             if len(parts) >= 5:
                 cov_str = parts[4].replace("%", "")
-                try:
+                with contextlib.suppress(ValueError):
                     total_coverage = float(cov_str)
-                except ValueError:
-                    pass
 
     current_file = ""
     for line in lines:
@@ -107,18 +109,14 @@ def check_interrogate():
                     current_file = name.replace(" (module)", "")
                 if status == "MISSED":
                     if "(module)" in name:
-                        missing_items.append(
-                            f"Module `{current_file}` missing docstring"
-                        )
+                        missing_items.append(f"Module `{current_file}` missing docstring")
                     else:
-                        missing_items.append(
-                            f"`{name}` in `{current_file}` missing docstring"
-                        )
+                        missing_items.append(f"`{name}` in `{current_file}` missing docstring")
 
     return total_coverage, missing_items
 
 
-def main():
+def main() -> None:
     print("Running Ruff check...")
     ruff_issues = check_ruff()
 
@@ -134,9 +132,7 @@ def main():
 
     # Determine Statuses
     code_status = "🟢 Passed" if not ruff_issues else "🟡 Warnings"
-    test_status = (
-        "🟢 Passed" if failed == 0 and line_cov >= 80 else "🔴 Action Required"
-    )
+    test_status = "🟢 Passed" if failed == 0 and line_cov >= 80 else "🔴 Action Required"
     doc_status = "🟢 Passed" if doc_cov >= 80 else "🟡 Needs Docs"
 
     report_content = f"""# 🛡️ SQL Data Guard Quality Report
@@ -156,9 +152,7 @@ def main():
 ## 🐍 Code Quality Details (Ruff)
 """
     if not ruff_issues:
-        report_content += (
-            "- **Lint Errors:** 0 violations found. Code style is clean.\n"
-        )
+        report_content += "- **Lint Errors:** 0 violations found. Code style is clean.\n"
     else:
         report_content += f"- **Violations Found:** {len(ruff_issues)} issue(s):\n"
         for issue in ruff_issues:
@@ -186,8 +180,7 @@ def main():
         if len(missing_docs) > 15:
             report_content += f"- *...and {len(missing_docs) - 15} more.*\n"
 
-    with open(report_path, "w") as f:
-        f.write(report_content)
+    Path(report_path).write_text(report_content, encoding="utf-8")
 
     print("Report generated successfully!")
 
