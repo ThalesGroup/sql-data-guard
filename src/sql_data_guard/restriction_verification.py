@@ -1,4 +1,11 @@
 
+"""
+SQL Data Guard restriction verification.
+
+This module contains logic to verify that parsed SQL query components adhere
+to configured data access restrictions (such as WHERE clause values/operators).
+"""
+
 from typing import Any
 
 import sqlglot
@@ -13,6 +20,17 @@ def verify_restrictions(
     context: VerificationContext,
     from_tables: list[expr.Table],
 ) -> None:
+    """
+    Verifies that the given query's FROM tables respect the configured restrictions.
+
+    If a restriction is missing, an error is reported in the verification context
+    and a correct restriction is injected into the query.
+
+    Args:
+        select_statement (expr.Query): The parsed query to verify.
+        context (VerificationContext): The verification context holding config and errors.
+        from_tables (list[expr.Table]): The list of tables referenced in the query's FROM clause.
+    """
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
         where_clause = select_statement.find(expr.Where)
@@ -92,6 +110,15 @@ def _create_new_condition(
 
 
 def _format_value(value: Any) -> Any:
+    """
+    Formats a raw Python value into a string literal if it's a string, or returns it as is.
+
+    Args:
+        value (Any): The value to format.
+
+    Returns:
+        Any: The formatted value.
+    """
     if isinstance(value, str):
         return f"'{value}'"
     return value
@@ -163,4 +190,13 @@ def _verify_restriction(
 
 
 def _get_restriction_values(restriction: dict[str, Any]) -> list[str]:
+    """
+    Extracts and stringifies restriction values from a restriction dictionary.
+
+    Args:
+        restriction (dict[str, Any]): The restriction definition dictionary.
+
+    Returns:
+        list[str]: A list of restriction value strings.
+    """
     return [str(v) for v in restriction["values"]] if "values" in restriction else [str(restriction["value"])]

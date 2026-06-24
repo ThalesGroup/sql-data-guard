@@ -1,7 +1,16 @@
+"""
+SQL Data Guard restriction validation.
+
+This module provides validation logic to ensure that restriction configurations
+comply with the supported schemas and operations.
+"""
+
 from typing import Any
 
 
 class UnsupportedRestrictionError(Exception):
+    """Exception raised when an unsupported restriction operation is specified in the configuration."""
+
     pass
 
 

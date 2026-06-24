@@ -1,3 +1,10 @@
+"""
+SQL Data Guard core verification library.
+
+This module provides the main verify_sql function and internal verification routines
+to validate SQL queries against strict schema restriction policies.
+"""
+
 import logging
 from typing import Any
 
@@ -13,9 +20,7 @@ from .verification_utils import find_direct, split_to_expressions
 _DEFAULT_MAX_LENGTH = 10_000
 
 
-def verify_sql(
-    sql: str, config: dict[str, Any], dialect: str | None = None
-) -> dict[str, Any]:
+def verify_sql(sql: str, config: dict[str, Any], dialect: str | None = None) -> dict[str, Any]:
     """
     Verifies an SQL query against a given configuration and optionally fixes it.
 
@@ -35,9 +40,7 @@ def verify_sql(
     if not config or not isinstance(config, dict) or "tables" not in config:
         return {
             "allowed": False,
-            "errors": [
-                "Invalid configuration provided. The configuration must include 'tables'."
-            ],
+            "errors": ["Invalid configuration provided. The configuration must include 'tables'."],
             "fixed": None,
             "risk": 1.0,
         }
@@ -66,9 +69,7 @@ def verify_sql(
             parsed = None
         if parsed:
             if isinstance(parsed, expr.Block):
-                active_exprs = [
-                    e for e in parsed.expressions if not isinstance(e, expr.Semicolon)
-                ]
+                active_exprs = [e for e in parsed.expressions if not isinstance(e, expr.Semicolon)]
                 if len(active_exprs) > 1:
                     result.add_error("Stacked queries are not allowed", False, 0.9)
                     parsed = None
@@ -79,12 +80,8 @@ def verify_sql(
                     parsed = None
             if isinstance(parsed, expr.Command):
                 result.add_error(f"{parsed.name} statement is not allowed", False, 0.9)
-            elif isinstance(
-                parsed, (expr.Delete, expr.Insert, expr.Update, expr.Create)
-            ):
-                result.add_error(
-                    f"{parsed.key.upper()} statement is not allowed", False, 0.9
-                )
+            elif isinstance(parsed, (expr.Delete, expr.Insert, expr.Update, expr.Create)):
+                result.add_error(f"{parsed.key.upper()} statement is not allowed", False, 0.9)
             elif isinstance(parsed, expr.Query):
                 _verify_query_statement(parsed, result)
             else:
@@ -107,6 +104,14 @@ def _verify_where_clause(
     select_statement: expr.Query,
     from_tables: list[expr.Table],
 ) -> None:
+    """
+    Verifies the WHERE clause of a query, auditing subqueries and verifying restrictions.
+
+    Args:
+        context (VerificationContext): The current verification context.
+        select_statement (expr.Query): The query select statement containing the WHERE clause.
+        from_tables (list[expr.Table]): List of tables referenced in the query's FROM/JOIN clauses.
+    """
     where_clause = select_statement.find(expr.Where)
     if where_clause:
         for sub in where_clause.find_all(expr.Subquery, expr.Exists):
@@ -115,9 +120,17 @@ def _verify_where_clause(
     verify_restrictions(select_statement, context, from_tables)
 
 
-def _verify_static_expression(
-    select_statement: expr.Query, context: VerificationContext
-) -> bool:
+def _verify_static_expression(select_statement: expr.Query, context: VerificationContext) -> bool:
+    """
+    Checks for and simplifies any static (constant) expressions in the WHERE clause.
+
+    Args:
+        select_statement (expr.Query): The query select statement to inspect.
+        context (VerificationContext): The current verification context.
+
+    Returns:
+        bool: True if there were no static expressions, False if static expressions were found.
+    """
     has_static_exp = False
     where_clause = select_statement.find(expr.Where)
     if where_clause:
@@ -131,6 +144,16 @@ def _verify_static_expression(
 
 
 def _has_static_expression(context: VerificationContext, exp: expr.Expression) -> bool:
+    """
+    Recursively audits an expression to identify unauthorized static/constant parts.
+
+    Args:
+        context (VerificationContext): The current verification context.
+        exp (expr.Expression): The SQL expression to audit.
+
+    Returns:
+        bool: True if a static expression is detected, False otherwise.
+    """
     if isinstance(exp, expr.Not):
         return _has_static_expression(context, exp.this)
     if isinstance(exp, expr.And):
@@ -143,9 +166,7 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
         if isinstance(sub_exp, expr.Or):
             result = _has_static_expression(context, sub_exp)
         elif not sub_exp.find(expr.Column):
-            context.add_error(
-                f"Static expression is not allowed: {sub_exp.sql()}", True, 0.8
-            )
+            context.add_error(f"Static expression is not allowed: {sub_exp.sql()}", True, 0.8)
             par = sub_exp.parent
             while isinstance(par, expr.Paren):
                 par = par.parent
@@ -157,9 +178,7 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
     return result
 
 
-def _get_in_scope_table_names(
-    query_statement: expr.Query, context: VerificationContext
-) -> set[str]:
+def _get_in_scope_table_names(query_statement: expr.Query, context: VerificationContext) -> set[str]:
     in_scope = set()
     from_clause = query_statement.find(expr.From)
     join_clauses = query_statement.args.get("joins", [])
@@ -173,15 +192,20 @@ def _get_in_scope_table_names(
     return in_scope
 
 
-def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
+def _verify_query_statement(query_statement: expr.Query, context: VerificationContext) -> None:
+    """
+    Recursively verifies CTEs, UNION branches, FROM tables, SELECT expressions, and WHERE clauses in a query.
+
+    Args:
+        query_statement (expr.Query): The parsed query expression.
+        context (VerificationContext): The current verification context.
+    """
     if isinstance(query_statement, expr.Union):
         _verify_query_statement(query_statement.left, context)
         _verify_query_statement(query_statement.right, context)
         return
     old_in_scope = context.current_in_scope_tables
-    context.current_in_scope_tables = old_in_scope | _get_in_scope_table_names(
-        query_statement, context
-    )
+    context.current_in_scope_tables = old_in_scope | _get_in_scope_table_names(query_statement, context)
     for cte in query_statement.ctes:
         cte_old_in_scope = context.current_in_scope_tables
         context.current_in_scope_tables = set(context.dynamic_tables.keys())
@@ -196,9 +220,17 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
     context.current_in_scope_tables = old_in_scope
 
 
-def _verify_from_tables(
-    context: VerificationContext, query_statement: expr.Query
-) -> list[expr.Table]:
+def _verify_from_tables(context: VerificationContext, query_statement: expr.Query) -> list[expr.Table]:
+    """
+    Validates that all tables referenced in the query's FROM/JOIN clause are authorized.
+
+    Args:
+        context (VerificationContext): The current verification context.
+        query_statement (expr.Query): The parsed query containing the FROM clause.
+
+    Returns:
+        list[expr.Table]: A list of verified referenced tables.
+    """
     from_tables = _get_from_clause_tables(query_statement, context)
     for t in from_tables:
         found = False
@@ -210,9 +242,14 @@ def _verify_from_tables(
     return from_tables
 
 
-def _verify_sub_queries(
-    context: VerificationContext, query_statement: expr.Query
-) -> None:
+def _verify_sub_queries(context: VerificationContext, query_statement: expr.Query) -> None:
+    """
+    Audits other non-FROM query clauses (like ORDER BY, LIMIT, HAVING, GROUP BY) for nested subqueries.
+
+    Args:
+        context (VerificationContext): The current verification context.
+        query_statement (expr.Query): The query statement to audit.
+    """
     for exp_type in [expr.Order, expr.Offset, expr.Limit, expr.Group, expr.Having]:
         for exp in find_direct(query_statement, exp_type):
             if exp:
@@ -225,6 +262,14 @@ def _verify_select_clause(
     select_clause: expr.Query,
     from_tables: list[expr.Table],
 ) -> None:
+    """
+    Validates all select elements in the SELECT clause, removing unauthorized columns.
+
+    Args:
+        context (VerificationContext): The current verification context.
+        select_clause (expr.Query): The SELECT statement to verify.
+        from_tables (list[expr.Table]): List of referenced tables.
+    """
     for select in select_clause.selects:
         for sub in select.find_all(expr.Subquery):
             _add_table_alias(sub, context)
@@ -242,6 +287,17 @@ def _verify_select_clause(
 def _verify_select_clause_element(
     from_tables: list[expr.Table], context: VerificationContext, e: expr.Expression
 ) -> bool:
+    """
+    Checks if an individual expression element in the SELECT clause is allowed.
+
+    Args:
+        from_tables (list[expr.Table]): List of referenced tables.
+        context (VerificationContext): The current verification context.
+        e (expr.Expression): The individual SELECT element to check.
+
+    Returns:
+        bool: True if the element is allowed/valid, False otherwise.
+    """
     if isinstance(e, expr.Column):
         if not _verify_col(e, from_tables, context):
             return False
@@ -270,9 +326,7 @@ def _verify_select_clause_element(
     return True
 
 
-def _verify_col(
-    col: expr.Column, from_tables: list[expr.Table], context: VerificationContext
-) -> bool:
+def _verify_col(col: expr.Column, from_tables: list[expr.Table], context: VerificationContext) -> bool:
     """
     Verifies if a column reference is allowed based on the provided tables and context.
 
@@ -290,10 +344,7 @@ def _verify_col(
         or (all(t.name in context.dynamic_tables for t in from_tables))
         or (
             col.table == ""
-            and any(
-                col.name in context.dynamic_tables.get(tbl, set())
-                for tbl in context.current_in_scope_tables
-            )
+            and any(col.name in context.dynamic_tables.get(tbl, set()) for tbl in context.current_in_scope_tables)
         )
         or (
             any(
@@ -313,9 +364,7 @@ def _verify_col(
     return False
 
 
-def _get_from_clause_tables(
-    select_clause: expr.Query, context: VerificationContext
-) -> list[expr.Table]:
+def _get_from_clause_tables(select_clause: expr.Query, context: VerificationContext) -> list[expr.Table]:
     """
     Extracts table references from the FROM clause of an SQL query.
 
@@ -347,6 +396,13 @@ def _get_from_clause_tables(
 
 
 def _add_table_alias(exp: expr.Expression, context: VerificationContext) -> None:
+    """
+    Registers a dynamic table alias and its generated column names into the verification context.
+
+    Args:
+        exp (expr.Expression): The expression containing a table alias.
+        context (VerificationContext): The current verification context.
+    """
     for table_alias in find_direct(exp, expr.TableAlias):
         if isinstance(table_alias, expr.TableAlias):
             if len(table_alias.columns) > 0:

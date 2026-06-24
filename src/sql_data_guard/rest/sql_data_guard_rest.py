@@ -1,3 +1,10 @@
+"""
+SQL Data Guard FastAPI web application.
+
+This module implements the FastAPI endpoints and logging initialization for the
+REST API.
+"""
+
 import logging
 import os
 from logging.config import fileConfig
@@ -17,6 +24,15 @@ app = FastAPI(
 
 
 class VerifySQLRequest(BaseModel):
+    """
+    Request model for the SQL verification endpoint.
+
+    Attributes:
+        sql (str): The SQL query string to verify.
+        config (dict[str, Any]): The rules and restrictions configuration.
+        dialect (str | None): Optional SQL dialect for parsing.
+    """
+
     sql: str = Field(..., description="The SQL query to verify")
     config: dict[str, Any] = Field(
         ...,
@@ -29,12 +45,24 @@ class VerifySQLRequest(BaseModel):
 
 @app.post("/verify-sql")
 def _verify_sql(payload: VerifySQLRequest) -> dict[str, Any]:
+    """
+    HTTP POST endpoint to verify an SQL query against the provided configuration.
+
+    Args:
+        payload (VerifySQLRequest): The request payload containing SQL and configuration.
+
+    Returns:
+        dict[str, Any]: Verification results including allowed status, errors, fixed query, and risk score.
+    """
     result = verify_sql(payload.sql, payload.config, payload.dialect)
     result["errors"] = list(result["errors"])
     return result
 
 
 def _init_logging() -> None:
+    """
+    Initializes system logging configuration using the logging.conf file if available.
+    """
     log_config_path = Path(__file__).resolve().parent / "logging.conf"
     if log_config_path.exists():
         fileConfig(str(log_config_path))
