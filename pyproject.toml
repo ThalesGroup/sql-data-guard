@@ -28,3 +28,10 @@ license = {file = "LICENSE.md"}
 [project.urls]
 Homepage = "https://github.com/ThalesGroup/sql-data-guard"
 Issues = "https://github.com/ThalesGroup/sql-data-guard/issues"
+
+[tool.interrogate]
+ignore-init-method = true
+ignore-magic = true
+fail-under = 80
+exclude = ["setup.py", "test", "openspec"]
+verbose = 0

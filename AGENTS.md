@@ -40,6 +40,14 @@ PYTHONPATH=src python -m pytest test/test_verification_utils.py -k "test_split_t
   PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_llm.py
   ```
 
+### Quality & Coverage Reporting
+To evaluate and generate a consolidated report on the project's code style, test coverage, and docstring completeness, execute:
+```bash
+python scripts/generate_quality_report.py
+```
+- **How it works:** This script programmatically runs `flake8` (linting), `pytest --cov` (statement and branch coverage), and `interrogate` (docstrings).
+- **Output:** It aggregates all statistics and details into a beautiful markdown report dashboard located at **`QUALITY_REPORT.md`** at the project root.
+
 ---
 
 ## Architecture & Sub-project Boundaries
