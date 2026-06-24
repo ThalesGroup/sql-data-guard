@@ -1,8 +1,8 @@
 import pytest
 
 from sql_data_guard.restriction_validation import (
-    validate_restrictions,
     UnsupportedRestrictionError,
+    validate_restrictions,
 )
 
 

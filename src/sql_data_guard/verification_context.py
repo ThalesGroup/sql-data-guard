@@ -1,4 +1,3 @@
-from typing import Set, Dict, List, Optional
 
 
 class VerificationContext:
@@ -20,9 +19,9 @@ class VerificationContext:
         self._errors = set()
         self._fixed = None
         self._config = config
-        self._dynamic_tables: Dict[str, Set[str]] = {}
+        self._dynamic_tables: dict[str, set[str]] = {}
         self._dialect = dialect
-        self._risk: List[float] = []
+        self._risk: list[float] = []
 
     @property
     def can_fix(self) -> bool:
@@ -35,15 +34,15 @@ class VerificationContext:
         self._risk.append(risk)
 
     @property
-    def errors(self) -> Set[str]:
+    def errors(self) -> set[str]:
         return self._errors
 
     @property
-    def fixed(self) -> Optional[str]:
+    def fixed(self) -> str | None:
         return self._fixed
 
     @fixed.setter
-    def fixed(self, value: Optional[str]):
+    def fixed(self, value: str | None):
         self._fixed = value
 
     @property
@@ -51,7 +50,7 @@ class VerificationContext:
         return self._config
 
     @property
-    def dynamic_tables(self) -> Dict[str, Set[str]]:
+    def dynamic_tables(self) -> dict[str, set[str]]:
         return self._dynamic_tables
 
     @property

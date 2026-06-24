@@ -2,7 +2,6 @@ import json
 import os
 import sys
 import threading
-from typing import Optional, Dict, List
 
 import docker
 
@@ -13,7 +12,7 @@ def load_config() -> dict:
     return json.load(open("/conf/config.json"))
 
 
-def _get_volumes() -> List[str]:
+def _get_volumes() -> list[str]:
     volumes = config["mcp-server"].get("volumes", [])
     if "PWD" in os.environ:
         volumes = [v.replace("$PWD", os.environ["PWD"]) for v in volumes]
@@ -83,7 +82,7 @@ def main():
         container.stop()
 
 
-def get_sql(json_line: dict) -> Optional[str]:
+def get_sql(json_line: dict) -> str | None:
     if json_line["method"] == "tools/call":
         for tool in config["mcp-tools"]:
             if tool["tool-name"] == json_line["params"]["name"]:
@@ -125,5 +124,5 @@ def input_line(line: str) -> str:
 if __name__ == "__main__":
     config = load_config()
     inject_response = config["sql-data-guard"]["inject-response"]
-    errors: Dict[int, dict] = {}
+    errors: dict[int, dict] = {}
     main()

@@ -12,8 +12,8 @@ def run_command(cmd, env=None):
     except Exception as e:
         return "", str(e), -1
 
-def check_flake8():
-    cmd = [".venv/bin/flake8", "--ignore=E501,F401,W292,W503", "src/"]
+def check_ruff():
+    cmd = ["uv", "run", "ruff", "check", "src/"]
     stdout, stderr, code = run_command(cmd)
     issues = []
     for line in stdout.splitlines():
@@ -24,7 +24,7 @@ def check_flake8():
 def check_pytest():
     env = os.environ.copy()
     env["PYTHONPATH"] = "src"
-    cmd = [".venv/bin/python", "-m", "pytest", "--cov=src", "--cov-branch", "--cov-report=xml", "test/"]
+    cmd = ["uv", "run", "pytest", "--cov=src", "--cov-branch", "--cov-report=xml", "tests/", "--ignore=tests/test_sql_guard_llm.py"]
     stdout, stderr, code = run_command(cmd, env=env)
     
     # Check if pytest failed completely
@@ -64,7 +64,7 @@ def check_pytest():
     return line_cov, branch_cov, passed, failed, file_coverages
 
 def check_interrogate():
-    cmd = [".venv/bin/interrogate", "-vv", "src/"]
+    cmd = ["uv", "run", "interrogate", "-vv", "src/"]
     stdout, stderr, code = run_command(cmd)
     
     total_coverage = 0.0
@@ -100,8 +100,8 @@ def check_interrogate():
     return total_coverage, missing_items
 
 def main():
-    print("Running Flake8 check...")
-    flake8_issues = check_flake8()
+    print("Running Ruff check...")
+    ruff_issues = check_ruff()
     
     print("Running Pytest and coverage check...")
     line_cov, branch_cov, passed, failed, file_coverages = check_pytest()
@@ -114,7 +114,7 @@ def main():
     print(f"Generating report at {report_path}...")
     
     # Determine Statuses
-    code_status = "🟢 Passed" if not flake8_issues else "🟡 Warnings"
+    code_status = "🟢 Passed" if not ruff_issues else "🟡 Warnings"
     test_status = "🟢 Passed" if failed == 0 and line_cov >= 80 else "🔴 Action Required"
     doc_status = "🟢 Passed" if doc_cov >= 80 else "🟡 Needs Docs"
     
@@ -126,19 +126,19 @@ def main():
 
 | Pillar | Metric Checked | Current Score | Status |
 | :--- | :--- | :---: | :---: |
-| 🐍 **Code Quality** | Flake8 Style Violations | **{len(flake8_issues)} Issues** | {code_status} |
+| 🐍 **Code Quality** | Ruff Style Violations | **{len(ruff_issues)} Issues** | {code_status} |
 | 🧪 **Test Quality** | Pytest Unit Coverage | **{line_cov:.1f}%** | {test_status} |
 | 📝 **Doc Quality** | Public API Docstring Coverage | **{doc_cov:.1f}%** | {doc_status} |
 
 ---
 
-## 🐍 Code Quality Details (Flake8)
+## 🐍 Code Quality Details (Ruff)
 """
-    if not flake8_issues:
+    if not ruff_issues:
         report_content += "- **Lint Errors:** 0 violations found. Code style is clean.\n"
     else:
-        report_content += f"- **Violations Found:** {len(flake8_issues)} issue(s):\n"
-        for issue in flake8_issues:
+        report_content += f"- **Violations Found:** {len(ruff_issues)} issue(s):\n"
+        for issue in ruff_issues:
             report_content += f"  - `{issue}`\n"
             
     report_content += f"""

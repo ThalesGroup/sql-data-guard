@@ -1,15 +1,12 @@
-import json
-import os
 import sqlite3
-from sqlite3 import Connection
-from typing import Set, Generator
+
 import pytest
-from sql_data_guard import verify_sql
 from conftest import verify_sql_test
+
+from sql_data_guard import verify_sql
 
 
 class TestSQLJoins:
-
     @pytest.fixture(scope="class")
     def config(self) -> dict:
         """Provide the configuration for SQL validation"""
@@ -43,9 +40,9 @@ class TestSQLJoins:
             conn.execute(
                 """
                    CREATE TABLE orders_db.products (
-                       prod_id INT, 
-                       prod_name TEXT, 
-                       category TEXT, 
+                       prod_id INT,
+                       prod_name TEXT,
+                       category TEXT,
                        price REAL
                    )"""
             )
@@ -244,7 +241,6 @@ class TestSQLJoins:
 
 
 class TestSQLJsonArrayQueries:
-
     # Fixture to provide the configuration for SQL validation with updated restrictions
     @pytest.fixture(scope="class")
     def config(self) -> dict:
@@ -321,7 +317,7 @@ class TestSQLJsonArrayQueries:
             )
             conn.execute(
                 """
-                INSERT INTO orders_db.orders (order_id, prod_id) 
+                INSERT INTO orders_db.orders (order_id, prod_id)
                 VALUES (1, 1), (2, 2)
             """
             )
@@ -442,7 +438,6 @@ class TestSQLJsonArrayQueries:
 
 # Test class that contains all the SQL cases for various SQL scenarios
 class TestSQLOrderDateBetweenRestrictions:
-
     # Fixture to provide the configuration for SQL validation with updated restrictions
     @pytest.fixture(scope="class")
     def config(self) -> dict:
@@ -508,8 +503,8 @@ class TestSQLOrderDateBetweenRestrictions:
             # Inserting sample data into the 'products' table
             conn.execute(
                 """
-                INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price) 
-                VALUES 
+                INSERT INTO orders_db.products (prod_id, prod_name, prod_category, price)
+                VALUES
                     (1, 'Product A', 'CategoryA', 120),
                     (2, 'Product B', 'CategoryB', 80),
                     (3, 'Product C', 'CategoryA', 150),
@@ -520,8 +515,8 @@ class TestSQLOrderDateBetweenRestrictions:
             # Inserting sample data into the 'orders' table
             conn.execute(
                 """
-                INSERT INTO orders_db.orders (order_id, prod_id, quantity, order_date) 
-                VALUES 
+                INSERT INTO orders_db.orders (order_id, prod_id, quantity, order_date)
+                VALUES
                     (1, 1, 10, '03-01-2025'),
                     (2, 2, 5, '02-02-2025'),
                     (3, 3, 7, '03-03-2025'),
@@ -553,9 +548,9 @@ class TestSQLOrderDateBetweenRestrictions:
 
     def test_left_join_products_with_orders(self, cnn, config):
         verify_sql_test(
-            """SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity 
-            FROM products p 
-            LEFT JOIN orders o ON p.prod_id = o.prod_id 
+            """SELECT p.prod_name, o.order_id, COALESCE(o.quantity, 0) AS quantity
+            FROM products p
+            LEFT JOIN orders o ON p.prod_id = o.prod_id
             WHERE p.price BETWEEN 80 AND 150""",
             config,
             cnn=cnn,
@@ -637,7 +632,6 @@ class TestSQLOrderDateBetweenRestrictions:
 
 
 class TestSQLOrderRestrictions:
-
     @pytest.fixture(scope="class")
     def cnn(self):
         with sqlite3.connect(":memory:") as conn:
@@ -645,19 +639,19 @@ class TestSQLOrderRestrictions:
             conn.execute(
                 """
                 CREATE TABLE orders (
-                    id INTEGER, 
-                    product_name TEXT, 
+                    id INTEGER,
+                    product_name TEXT,
                     account_id INTEGER
                 )"""
             )
             # Insert sample data into orders table
 
             conn.execute(
-                """INSERT INTO orders (id, product_name, account_id) 
-                VALUES 
+                """INSERT INTO orders (id, product_name, account_id)
+                VALUES
                 (1, 'Product A', 123),
-                (2, 'Product B', 124), 
-                (3, "Product C", 125) 
+                (2, 'Product B', 124),
+                (3, "Product C", 125)
                 """
             )
 

@@ -1,11 +1,10 @@
 import json
 import sqlite3
-from typing import Optional, Tuple
 
 import pytest
+from test_utils import get_model_ids, init_env_from_file, invoke_llm
 
 from sql_data_guard import verify_sql
-from test_utils import init_env_from_file, invoke_llm, get_model_ids
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -61,13 +60,13 @@ class TestQueryUsingLLM:
 
     def _build_prompt(
         self, question: str, use_system_prompt: bool, cnn
-    ) -> Tuple[Optional[str], str]:
+    ) -> tuple[str | None, str]:
         system_prompt = f"""<instructions>
         I have a table with the columns matching metadata below. The table name is {TestQueryUsingLLM._TABLE_NAME}.
-        you MUST query from this table only. No other tables are allowed. 
-        Use only the following account_id: {self._ACCOUNT_ID} 
+        you MUST query from this table only. No other tables are allowed.
+        Use only the following account_id: {self._ACCOUNT_ID}
         Please create an SQL statement I can run on my db to get the answer to the user question.
-        SUPER IMPORTANT: You MUST follow the ALL OF the following rules when constructing the SQL. 
+        SUPER IMPORTANT: You MUST follow the ALL OF the following rules when constructing the SQL.
         Each one of them is important for the correct execution of the SQL - do not skip any of them:
         {TestQueryUsingLLM._format_hints()}
         </instructions>
@@ -124,7 +123,7 @@ class TestQueryUsingLLM:
             {"product_name": "product2"},
         ]
         result = verify_sql(sql, config, "sqlite")
-        assert result["allowed"] == False
+        assert not result["allowed"]
         fixed_sql = result["fixed"]
         assert cursor.execute(fixed_sql).fetchall() == [{"product_name": "product1"}]
 
@@ -146,5 +145,5 @@ class TestQueryUsingLLM:
         print(sql)
         assert cnn.cursor().execute(sql).fetchall() == [{"name": "orders"}]
         result = verify_sql(sql, config, "sqlite")
-        assert result["allowed"] == False
+        assert not result["allowed"]
         assert result["fixed"] is None

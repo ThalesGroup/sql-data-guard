@@ -1,6 +1,0 @@
-pytest
-duckdb
-flask
-pytest-cov
-interrogate
-flake8

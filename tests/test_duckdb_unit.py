@@ -1,15 +1,15 @@
-from typing import Set, Generator
+from collections.abc import Generator
 
 import duckdb
 import pytest
-
 from conftest import verify_sql_test
+
 from sql_data_guard import verify_sql
 
 
 def _fetch_dict(
     con: duckdb.DuckDBPyConnection, query: str
-) -> Generator[dict, None, None]:
+) -> Generator[dict]:
     handle = con.sql(query)
     while batch := handle.fetchmany(100):
         for row in batch:
@@ -19,7 +19,7 @@ def _fetch_dict(
 def _verify_sql_test_duckdb(
     sql: str,
     config: dict,
-    errors: Set[str] = None,
+    errors: set[str] = None,
     fix: str = None,
     cnn: duckdb.DuckDBPyConnection = None,
     data: list = None,
@@ -31,7 +31,6 @@ def _verify_sql_test_duckdb(
 
 
 class TestDuckdbDialect:
-
     @pytest.fixture(scope="class")
     def cnn(self):
         with duckdb.connect(":memory:") as conn:
@@ -124,7 +123,7 @@ class TestDuckdbDialect:
 
     def test_access_with_restriction(self, config, cnn):
         _verify_sql_test_duckdb(
-            """SELECT p.name, p.position, s.goals from players p join stats s on 
+            """SELECT p.name, p.position, s.goals from players p join stats s on
             p.name = s.player_name where p.name = 'Ronaldo' and p.position = 'CF' and s.assists = 234 """,
             config,
             cnn=cnn,
@@ -173,7 +172,7 @@ class TestDuckdbDialect:
         _verify_sql_test_duckdb(
             """
             SELECT p.name, s.assists
-            FROM players p 
+            FROM players p
             INNER JOIN stats s ON p.name = s.player_name
             WHERE p.name = 'Ronaldo' AND p.position = 'CF' AND s.assists = 234
             """,
@@ -186,12 +185,12 @@ class TestDuckdbDialect:
         res = verify_sql(
             """
             SELECT p.name, s.trophies
-            FROM players p 
+            FROM players p
             CROSS JOIN stats s
             """,
             config,
         )
-        assert res["allowed"] == False, res
+        assert not res["allowed"], res
         assert (
             "Missing restriction for table: stats column: s.assists value: 234"
             in res["errors"]
@@ -201,7 +200,7 @@ class TestDuckdbDialect:
         _verify_sql_test_duckdb(
             """
             SELECT p.name, s.trophies
-            FROM players p 
+            FROM players p
             CROSS JOIN stats s
             WHERE p.name = 'Ronaldo' AND p.position = 'CF' and s.assists = 234
             """,
@@ -213,9 +212,9 @@ class TestDuckdbDialect:
     def test_complex_join_query(self, config, cnn):
         _verify_sql_test_duckdb(
             """
-                    SELECT p.name, p.jersey_no, p.age, s.goals, 
+                    SELECT p.name, p.jersey_no, p.age, s.goals,
                     (s.goals + s.assists) as GA, s.trophies
-                    FROM players p 
+                    FROM players p
                     CROSS JOIN stats s
                     WHERE p.name = 'Ronaldo' AND p.position = 'CF' and s.assists = 234
                     """,
