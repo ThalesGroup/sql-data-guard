@@ -15,11 +15,11 @@ def verify_sql_test(
 ) -> str:
     result = verify_sql(sql, config, dialect)
     if errors is None:
-        assert result["errors"] == set()
+        assert not result["errors"]
     else:
-        expected_errors = list(errors)
-        actual_errors = list(result["errors"])
-        assert actual_errors == expected_errors
+        # errors is now an ordered list; compare order-insensitively since callers
+        # pass an (unordered) set of expected messages.
+        assert set(result["errors"]) == set(errors)
     if len(result["errors"]) > 0:
         assert result["risk"] > 0
     else:

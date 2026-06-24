@@ -9,7 +9,8 @@ package-dir = {"" = "src"}
 extra-index-url = ["https://pypi.org/simple"]
 [project]
 name = "sql-data-guard"
-version = "UPDATED-BY-WORKFLOW"
+# Local/dev placeholder; overwritten by the publish workflow before release.
+version = "0.0.0.dev0"
 dependencies = [
     "sqlglot"
 ]

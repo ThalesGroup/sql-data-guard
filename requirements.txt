@@ -1,1 +1,3 @@
 sqlglot
+flask
+flasgger

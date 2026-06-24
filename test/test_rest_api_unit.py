@@ -74,3 +74,31 @@ class TestRestAppVerifySql:
             "fixed": "SELECT id FROM orders WHERE id = 123",
             "risk": 0.3,
         }
+
+    def test_verify_sql_column_masking(self):
+        config = {
+            "tables": [
+                {
+                    "table_name": "users",
+                    "columns": ["id", "credit_card"],
+                    "column_masks": [
+                        {"column": "credit_card", "policy": "partial", "show_last": 4}
+                    ],
+                }
+            ]
+        }
+        result = app.test_client().post(
+            "/verify-sql",
+            json={
+                "sql": "SELECT id, credit_card FROM users",
+                "config": config,
+                "dialect": "postgres",
+            },
+        )
+        assert result.status_code == 200
+        assert result.json == {
+            "allowed": False,
+            "errors": ["Column credit_card is masked (partial)"],
+            "fixed": "SELECT id, CONCAT('****', SUBSTRING(CAST(credit_card AS VARCHAR) FROM -4)) AS credit_card FROM users",
+            "risk": 0.2,
+        }

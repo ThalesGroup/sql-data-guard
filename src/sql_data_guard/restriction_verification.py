@@ -6,6 +6,14 @@ import sqlglot.expressions as expr
 from .verification_context import VerificationContext
 from .verification_utils import split_to_expressions
 
+_COMPARISON_OPERATORS = (">", "<", ">=", "<=")
+_COMPARISON_EXPR_TO_OP = {
+    expr.LT: "<",
+    expr.LTE: "<=",
+    expr.GT: ">",
+    expr.GTE: ">=",
+}
+
 
 def verify_restrictions(
     select_statement: expr.Query,
@@ -14,7 +22,6 @@ def verify_restrictions(
 ):
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
-        where_clause = select_statement.find(expr.Where)
         and_exps = []
     else:
         and_exps = list(split_to_expressions(where_clause.this, expr.And))
@@ -68,20 +75,23 @@ def _create_new_condition(
     Returns: condition expression
 
     """
-    if restriction.get("operation") == "BETWEEN":
+    operation = restriction.get("operation")
+    if operation == "BETWEEN":
         operator = "BETWEEN"
         operand = f"{_format_value(restriction['values'][0])} AND {_format_value(restriction['values'][1])}"
-    elif restriction.get("operation") == "IN":
+    elif operation == "IN":
         operator = "IN"
         values = restriction.get("values", [restriction.get("value")])
-        operand = f"({', '.join(map(str, values))})"
+        # Format each value so string members are safely quoted/escaped (S1).
+        operand = f"({', '.join(_format_value(v) for v in values)})"
     else:
-        operator = "="
-        operand = (
-            _format_value(restriction["value"])
-            if "value" in restriction
-            else str(restriction["values"])[1:-1]
-        )
+        # Preserve the restriction's comparison operator (e.g. '<') instead of
+        # forcing '='. Defaults to '=' for scalar equality restrictions.
+        operator = operation if operation in _COMPARISON_OPERATORS else "="
+        if "value" in restriction:
+            operand = _format_value(restriction["value"])
+        else:
+            operand = ", ".join(_format_value(v) for v in restriction["values"])
     new_condition = sqlglot.parse_one(
         f"{table_prefix}{restriction['column']} {operator} {operand}",
         dialect=context.dialect,
@@ -90,10 +100,11 @@ def _create_new_condition(
 
 
 def _format_value(value):
+    """Render a Python value as a safe SQL literal (escaping embedded quotes)."""
     if isinstance(value, str):
-        return f"'{value}'"
-    else:
-        return value
+        # sqlglot's string literal handles escaping of embedded single quotes.
+        return expr.Literal.string(value).sql()
+    return str(value)
 
 
 def _verify_restriction(
@@ -145,19 +156,35 @@ def _verify_restriction(
     if isinstance(exp, (expr.LT, expr.LTE, expr.GT, expr.GTE)) and isinstance(
         exp.right, expr.Condition
     ):
-        if restriction.get("operation") not in [">=", ">", "<=", "<"]:
+        operation = restriction.get("operation")
+        if operation not in _COMPARISON_OPERATORS:
             return False
-        assert len(values) == 1
-        if isinstance(exp, expr.LT) and restriction["operation"] == "<":
-            return str(exp.right.this) < values[0]
-        elif isinstance(exp, expr.LTE) and restriction["operation"] == "<=":
-            return str(exp.right.this) <= values[0]
-        elif isinstance(exp, expr.GT) and restriction["operation"] == ">":
-            return str(exp.right.this) > values[0]
-        elif isinstance(exp, expr.GTE) and restriction["operation"] == ">=":
-            return str(exp.right.this) >= values[0]
-        else:
+        if len(values) != 1:
             return False
+        # The query's operator must match the restriction's operator.
+        if _COMPARISON_EXPR_TO_OP.get(type(exp)) != operation:
+            return False
+        return _compare_values(str(exp.right.this), values[0], operation)
+    return False
+
+
+def _compare_values(query_value: str, restriction_value: str, operation: str) -> bool:
+    """
+    Compares two values numerically when possible, falling back to lexicographic
+    comparison for non-numeric strings. Prevents the "9" < "18" string-comparison bug.
+    """
+    try:
+        left, right = float(query_value), float(restriction_value)
+    except (TypeError, ValueError):
+        left, right = query_value, restriction_value
+    if operation == "<":
+        return left < right
+    if operation == "<=":
+        return left <= right
+    if operation == ">":
+        return left > right
+    if operation == ">=":
+        return left >= right
     return False
 
 

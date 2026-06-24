@@ -220,7 +220,7 @@ class TestSQLJoins:
            """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is True, res
-        assert res["errors"] == set(), res
+        assert not res["errors"], res
 
     def test_union_with_invalid_column(self, config):
         sql_query = """
@@ -240,7 +240,7 @@ class TestSQLJoins:
            """
         res = verify_sql(sql_query, config)
         assert res["allowed"] is True, res
-        assert res["errors"] == set(), res
+        assert not res["errors"], res
 
 
 class TestSQLJsonArrayQueries:

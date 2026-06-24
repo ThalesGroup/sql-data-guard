@@ -8,6 +8,12 @@ import docker
 
 from sql_data_guard import verify_sql
 
+# Module-level defaults so the module is import-safe; the real values are assigned
+# in the __main__ block when run as a process (Q3).
+config: dict = {}
+inject_response: bool = False
+errors: Dict[int, dict] = {}
+
 
 def load_config() -> dict:
     return json.load(open("/conf/config.json"))
@@ -125,5 +131,4 @@ def input_line(line: str) -> str:
 if __name__ == "__main__":
     config = load_config()
     inject_response = config["sql-data-guard"]["inject-response"]
-    errors: Dict[int, dict] = {}
     main()
