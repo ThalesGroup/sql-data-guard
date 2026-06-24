@@ -1,6 +1,6 @@
 # 🛡️ SQL Data Guard Quality Report
 
-**Generated on:** 2026-06-24 15:51:10
+**Generated on:** 2026-06-24 15:16:18
 
 ## 📊 Quality Summary
 
@@ -164,7 +164,7 @@
   - `[*] 2 fixable with the `--fix` option.`
 
 ## 🧪 Test Quality Details (Pytest-Cov)
-- **Total Tests Executed:** 302 (Passed: 302, Failed: 0)
+- **Total Tests Executed:** 310 (Passed: 310, Failed: 0)
 - **Branch Coverage:** 92.4%
 - **Statement Coverage:** 93.8%
 

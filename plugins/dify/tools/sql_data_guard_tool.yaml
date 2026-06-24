@@ -137,6 +137,17 @@ parameters:
           en_US: TSQL
         value: tsql
 
+  - name: enable_telemetry
+    type: boolean
+    required: false
+    label:
+      en_US: Enable Telemetry
+    human_description:
+      en_US: "Help improve SQL Data Guard by sharing anonymous, non-personal usage metrics."
+    llm_description: "Help improve SQL Data Guard by sharing anonymous, non-personal usage metrics."
+    form: form
+    default: false
+
 output_schema:
   type: object
   properties:
