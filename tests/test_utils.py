@@ -7,9 +7,8 @@ import logging
 import os
 import pprint
 import urllib.parse
-from http.client import HTTPSConnection
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 
 _DEFAULT_MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
 _PROJECT_FOLDER = Path(os.path.dirname(os.path.abspath(__file__))).parent.absolute()
@@ -29,7 +28,7 @@ def init_env_from_file():
                 os.environ[key] = value
 
 
-def get_model_ids() -> List[str]:
+def get_model_ids() -> list[str]:
     return [
         "anthropic.claude-3-haiku-20240307-v1:0",
         "anthropic.claude-3-sonnet-20240229-v1:0",
@@ -123,7 +122,7 @@ def _invoke_bedrock_model(prompt_body: dict, model_id: str) -> dict:
 
 
 def _format_model_body(
-    prompt: str, system_prompt: Optional[str], model_id: str
+    prompt: str, system_prompt: str | None, model_id: str
 ) -> dict:
     if system_prompt is None:
         system_prompt = "You are a SQL generator helper"

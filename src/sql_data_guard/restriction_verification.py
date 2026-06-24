@@ -1,4 +1,3 @@
-from typing import List
 
 import sqlglot
 import sqlglot.expressions as expr
@@ -10,7 +9,7 @@ from .verification_utils import split_to_expressions
 def verify_restrictions(
     select_statement: expr.Query,
     context: VerificationContext,
-    from_tables: List[expr.Table],
+    from_tables: list[expr.Table],
 ):
     where_clause = select_statement.find(expr.Where)
     if where_clause is None:
@@ -161,7 +160,7 @@ def _verify_restriction(
     return False
 
 
-def _get_restriction_values(restriction: dict) -> List[str]:
+def _get_restriction_values(restriction: dict) -> list[str]:
     if "values" in restriction:
         values = [str(v) for v in restriction["values"]]
     else:

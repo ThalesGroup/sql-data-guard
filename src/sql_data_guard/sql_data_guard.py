@@ -1,14 +1,13 @@
 import logging
-from typing import List
 
 import sqlglot
 import sqlglot.expressions as expr
 from sqlglot.optimizer.simplify import simplify
 
-from .restriction_validation import validate_restrictions, UnsupportedRestrictionError
+from .restriction_validation import UnsupportedRestrictionError, validate_restrictions
 from .restriction_verification import verify_restrictions
 from .verification_context import VerificationContext
-from .verification_utils import split_to_expressions, find_direct
+from .verification_utils import find_direct, split_to_expressions
 
 _DEFAULT_MAX_LENGTH = 10_000
 
@@ -85,7 +84,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
 def _verify_where_clause(
     context: VerificationContext,
     select_statement: expr.Query,
-    from_tables: List[expr.Table],
+    from_tables: list[expr.Table],
 ):
     where_clause = select_statement.find(expr.Where)
     if where_clause:
@@ -175,7 +174,7 @@ def _verify_sub_queries(context, query_statement):
 def _verify_select_clause(
     context: VerificationContext,
     select_clause: expr.Query,
-    from_tables: List[expr.Table],
+    from_tables: list[expr.Table],
 ):
     for select in select_clause.selects:
         for sub in select.find_all(expr.Subquery):
@@ -192,7 +191,7 @@ def _verify_select_clause(
 
 
 def _verify_select_clause_element(
-    from_tables: List[expr.Table], context: VerificationContext, e: expr.Expression
+    from_tables: list[expr.Table], context: VerificationContext, e: expr.Expression
 ):
     if isinstance(e, expr.Column):
         if not _verify_col(e, from_tables, context):
@@ -209,8 +208,8 @@ def _verify_select_clause_element(
         return False
     elif isinstance(e, expr.Tuple):
         result = True
-        for e in e.expressions:
-            if not _verify_select_clause_element(from_tables, context, e):
+        for sub_e in e.expressions:
+            if not _verify_select_clause_element(from_tables, context, sub_e):
                 result = False
         return result
     else:
@@ -221,7 +220,7 @@ def _verify_select_clause_element(
 
 
 def _verify_col(
-    col: expr.Column, from_tables: List[expr.Table], context: VerificationContext
+    col: expr.Column, from_tables: list[expr.Table], context: VerificationContext
 ) -> bool:
     """
     Verifies if a column reference is allowed based on the provided tables and context.
@@ -264,7 +263,7 @@ def _verify_col(
 
 def _get_from_clause_tables(
     select_clause: expr.Query, context: VerificationContext
-) -> List[expr.Table]:
+) -> list[expr.Table]:
     """
     Extracts table references from the FROM clause of an SQL query.
 
@@ -283,13 +282,13 @@ def _get_from_clause_tables(
             for t in find_direct(clause, expr.Table):
                 if isinstance(t, expr.Table):
                     result.append(t)
-            for l in find_direct(clause, expr.Subquery):
-                _add_table_alias(l, context)
-                _verify_query_statement(l.this, context)
+            for subq in find_direct(clause, expr.Subquery):
+                _add_table_alias(subq, context)
+                _verify_query_statement(subq.this, context)
     for join_clause in join_clauses:
-        for l in find_direct(join_clause, expr.Lateral):
-            _add_table_alias(l, context)
-            _verify_query_statement(l.this.find(expr.Select), context)
+        for lat in find_direct(join_clause, expr.Lateral):
+            _add_table_alias(lat, context)
+            _verify_query_statement(lat.this.find(expr.Select), context)
         for u in find_direct(join_clause, expr.Unnest):
             _add_table_alias(u, context)
     return result
@@ -301,5 +300,5 @@ def _add_table_alias(exp: expr.Expression, context: VerificationContext):
             if len(table_alias.columns) > 0:
                 column_names = {col.alias_or_name for col in table_alias.columns}
             else:
-                column_names = {c for c in exp.this.named_selects}
+                column_names = set(exp.this.named_selects)
             context.dynamic_tables[table_alias.alias_or_name] = column_names

@@ -1,8 +1,5 @@
-# test-verification-utils Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change test-verification-utils. Update Purpose after archive.
-## Requirements
 ### Requirement: Test split_to_expressions function
 The test suite residing in `/tests` SHALL verify the behavior of `split_to_expressions` with flattened and non-flattened `sqlglot` expressions.
 
@@ -24,4 +21,3 @@ The test suite residing in `/tests` SHALL verify that `find_direct` correctly id
 #### Scenario: Ignore indirect child types
 - **WHEN** passing a parent expression with matching types nested inside other types (not direct children)
 - **THEN** those nested types are ignored
-

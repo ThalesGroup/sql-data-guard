@@ -1,39 +1,54 @@
 import logging
 import os
 from logging.config import fileConfig
+from typing import Any, Dict, Optional
 
-from flask import Flask, jsonify, request
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
 
 from sql_data_guard import verify_sql
 
-app = Flask(__name__)
+app = FastAPI(
+    title="SQL Data Guard REST API",
+    description="Safety Layer for LLM Database Interactions",
+    version="0.0.1",
+)
 
 
-@app.route("/verify-sql", methods=["POST"])
-def _verify_sql():
-    if not request.is_json:
-        return jsonify({"error": "Request must be JSON"}), 400
-    data = request.get_json()
-    if "sql" not in data:
-        return jsonify({"error": "Missing 'sql' in request"}), 400
-    sql = data["sql"]
-    if "config" not in data:
-        return jsonify({"error": "Missing 'config' in request"}), 400
-    config = data["config"]
-    dialect = data.get("dialect")
-    result = verify_sql(sql, config, dialect)
+class VerifySQLRequest(BaseModel):
+    sql: str = Field(..., description="The SQL query to verify")
+    config: Dict[str, Any] = Field(
+        ...,
+        description="The verification configuration specifying allowed tables, columns, and restrictions",
+    )
+    dialect: Optional[str] = Field(
+        None, description="Optional SQL dialect for parsing"
+    )
+
+
+@app.post("/verify-sql")
+def _verify_sql(payload: VerifySQLRequest):
+    result = verify_sql(payload.sql, payload.config, payload.dialect)
     result["errors"] = list(result["errors"])
-    return jsonify(result)
+    return result
 
 
 def _init_logging():
-    fileConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), "logging.conf"))
-    logging.info("Logging initialized")
+    log_config_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "logging.conf"
+    )
+    if os.path.exists(log_config_path):
+        fileConfig(log_config_path)
+        logging.info("Logging initialized")
+    else:
+        logging.basicConfig(level=logging.INFO)
+        logging.info("Logging initialized with basic configuration")
 
 
 if __name__ == "__main__":
     _init_logging()
-    logging.getLogger("werkzeug").setLevel("WARNING")
-    port = os.environ.get("APP_PORT", 5000)
+    import uvicorn
+
+    port = int(os.environ.get("APP_PORT", 5000))
     logging.info(f"Going to start the app. Port: {port}")
-    app.run(host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)

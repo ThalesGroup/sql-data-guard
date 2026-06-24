@@ -2,11 +2,11 @@ import json
 import logging
 import os
 import sqlite3
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
-
 from conftest import verify_sql_test
+
 from sql_data_guard import verify_sql
 
 
@@ -14,7 +14,7 @@ def _get_resource(file_name: str) -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
 
 
-def _get_tests(file_name: str) -> Generator[dict, None, None]:
+def _get_tests(file_name: str) -> Generator[dict]:
     with open(_get_resource(os.path.join("resources", file_name))) as f:
         for line in f:
             try:
@@ -29,7 +29,7 @@ class TestSQLErrors:
     def test_basic_sql_error(self):
         result = verify_sql("this is not an sql statement ", {})
 
-        assert result["allowed"] == False
+        assert not result["allowed"]
         assert len(result["errors"]) == 1
         error = next(iter(result["errors"]))
         assert (
@@ -39,7 +39,6 @@ class TestSQLErrors:
 
 
 class TestSingleTable:
-
     @pytest.fixture(scope="class")
     def config(self) -> dict:
         return {
@@ -82,7 +81,7 @@ class TestSingleTable:
     )
     def test_orders_from_file(self, test_name, config, cnn, tests):
         test = tests[test_name]
-        if not "skip-reason" in test:
+        if "skip-reason" not in test:
             verify_sql_test(
                 test["sql"],
                 config,
@@ -130,7 +129,7 @@ class TestSingleTable:
 
     def test_invalid_query(self, config):
         result = verify_sql("DROP TABLE users;", config)
-        assert result["allowed"] == False  # not allowed
+        assert not result["allowed"]  # not allowed
 
     @pytest.mark.parametrize(
         "user_question",
@@ -154,7 +153,6 @@ class TestSingleTable:
 
 
 class TestJoinTable:
-
     @pytest.fixture
     def config(self) -> dict:
         return {
@@ -204,7 +202,7 @@ INSERT INTO orders (order_id, account_id, product_id) VALUES
 (101, 123, 1),
 (102, 123, 2),
 (103, 222, 3),
-(104, 333, 1);            
+(104, 333, 1);
             """
             )
             yield conn
@@ -227,7 +225,7 @@ INSERT INTO orders (order_id, account_id, product_id) VALUES
     def test_distinct_and_group_by(self, config, cnn):
         sql = "SELECT COUNT(DISTINCT order_id) AS orders_count FROM orders WHERE account_id = 123  GROUP BY account_id"
         result = verify_sql(sql, config)
-        assert result["allowed"] == True
+        assert result["allowed"]
         assert cnn.execute(sql).fetchall() == [(2,)]
 
     def test_distinct_and_group_by_missing_restriction(self, config, cnn):
@@ -246,29 +244,29 @@ INSERT INTO orders (order_id, account_id, product_id) VALUES
     def test_complex_join(self, config, cnn):
         sql = """WITH OrderCounts AS (
     -- Count how many times each product was ordered per account
-    SELECT 
-        o.account_id, 
-        p.product_name, 
+    SELECT
+        o.account_id,
+        p.product_name,
         COUNT(o.order_id) AS order_count
-    FROM orders o    
+    FROM orders o
     JOIN products p ON o.product_id = p.product_id
     WHERE o.account_id = 123
     GROUP BY o.account_id, p.product_name
 ),
 RankedProducts AS (
     -- Rank products based on total orders across all accounts
-    SELECT 
-        product_name, 
-        SUM(order_count) AS total_orders, 
+    SELECT
+        product_name,
+        SUM(order_count) AS total_orders,
         RANK() OVER (ORDER BY SUM(order_count) DESC) AS product_rank
     FROM OrderCounts
     GROUP BY product_name
 )
 -- Final selection
-SELECT 
-    oc.account_id, 
-    oc.product_name, 
-    oc.order_count, 
+SELECT
+    oc.account_id,
+    oc.product_name,
+    oc.order_count,
     rp.product_rank
 FROM OrderCounts oc
 JOIN RankedProducts rp ON oc.product_name = rp.product_name
@@ -407,7 +405,7 @@ class TestRestrictionsWithDifferentDataTypes:
 
     def test_restrictions(self, config, cnn):
         verify_sql_test(
-            """SELECT COUNT() FROM my_table 
+            """SELECT COUNT() FROM my_table
 WHERE bool_col = True AND str_col1 = 'abc' AND str_col2 = 'def'""",
             config,
             cnn=cnn,
@@ -458,16 +456,16 @@ class TestMaxLength:
 
     def test_sql_too_long(self, config_max_length):
         long_sql = (
-            "SELECT " + ", ".join([f"1" for _ in range(100)]) + " FROM test_table"
+            "SELECT " + ", ".join(["1" for _ in range(100)]) + " FROM test_table"
         )
         result = verify_sql(long_sql, config_max_length)
-        assert result["allowed"] == False
+        assert not result["allowed"]
         assert "SQL exceeds maximum length of 100 characters." in result["errors"]
 
     def test_default_max_length(self, config_default_max_length):
         long_sql = (
-            "SELECT " + ", ".join([f"1" for _ in range(10_000)]) + " FROM test_table"
+            "SELECT " + ", ".join(["1" for _ in range(10_000)]) + " FROM test_table"
         )
         result = verify_sql(long_sql, config_default_max_length)
-        assert result["allowed"] == False
+        assert not result["allowed"]
         assert "SQL exceeds maximum length of 10000 characters." in result["errors"]

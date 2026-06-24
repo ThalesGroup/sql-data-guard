@@ -1,5 +1,4 @@
 from sqlite3 import Connection
-from typing import Set
 
 from sql_data_guard import verify_sql
 
@@ -7,7 +6,7 @@ from sql_data_guard import verify_sql
 def verify_sql_test(
     sql: str,
     config: dict,
-    errors: Set[str] = None,
+    errors: set[str] = None,
     fix: str = None,
     dialect: str = "sqlite",
     cnn: Connection = None,
