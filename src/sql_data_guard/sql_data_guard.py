@@ -13,7 +13,9 @@ from .verification_utils import find_direct, split_to_expressions
 _DEFAULT_MAX_LENGTH = 10_000
 
 
-def verify_sql(sql: str, config: dict[str, Any], dialect: str | None = None) -> dict[str, Any]:
+def verify_sql(
+    sql: str, config: dict[str, Any], dialect: str | None = None
+) -> dict[str, Any]:
     """
     Verifies an SQL query against a given configuration and optionally fixes it.
 
@@ -56,24 +58,42 @@ def verify_sql(sql: str, config: dict[str, Any], dialect: str | None = None) -> 
 
     result = VerificationContext(config, dialect)
     try:
-        parsed = sqlglot.parse_one(sql, dialect=dialect)
-    except sqlglot.errors.ParseError as e:
-        logging.error(f"SQL: {sql}\nError parsing SQL: {e}")
-        result.add_error(f"Error parsing sql: {e}", False, 0.9)
-        parsed = None
-    if parsed:
-        if isinstance(parsed, expr.Command):
-            result.add_error(f"{parsed.name} statement is not allowed", False, 0.9)
-        elif isinstance(parsed, (expr.Delete, expr.Insert, expr.Update, expr.Create)):
-            result.add_error(
-                f"{parsed.key.upper()} statement is not allowed", False, 0.9
-            )
-        elif isinstance(parsed, expr.Query):
-            _verify_query_statement(parsed, result)
-        else:
-            result.add_error("Could not find a query statement", False, 0.7)
-    if result.can_fix and len(result.errors) > 0 and parsed is not None:
-        result.fixed = parsed.sql(dialect=dialect)
+        try:
+            parsed = sqlglot.parse_one(sql, dialect=dialect)
+        except (sqlglot.errors.ParseError, RecursionError, ValueError) as e:
+            logging.error(f"SQL: {sql}\nError parsing SQL: {e}")
+            result.add_error(f"Error parsing sql: {e}", False, 0.9)
+            parsed = None
+        if parsed:
+            if isinstance(parsed, expr.Block):
+                active_exprs = [
+                    e for e in parsed.expressions if not isinstance(e, expr.Semicolon)
+                ]
+                if len(active_exprs) > 1:
+                    result.add_error("Stacked queries are not allowed", False, 0.9)
+                    parsed = None
+                elif len(active_exprs) == 1:
+                    parsed = active_exprs[0]
+                else:
+                    result.add_error("Could not find a query statement", False, 0.7)
+                    parsed = None
+            if isinstance(parsed, expr.Command):
+                result.add_error(f"{parsed.name} statement is not allowed", False, 0.9)
+            elif isinstance(
+                parsed, (expr.Delete, expr.Insert, expr.Update, expr.Create)
+            ):
+                result.add_error(
+                    f"{parsed.key.upper()} statement is not allowed", False, 0.9
+                )
+            elif isinstance(parsed, expr.Query):
+                _verify_query_statement(parsed, result)
+            else:
+                result.add_error("Could not find a query statement", False, 0.7)
+        if result.can_fix and len(result.errors) > 0 and parsed:
+            result.fixed = parsed.sql(dialect=dialect)
+    except RecursionError as e:
+        logging.error(f"Recursion error during verification of SQL: {sql}\nError: {e}")
+        result.add_error(f"Query nesting depth exceeded safe limits: {e}", False, 0.9)
     return {
         "allowed": len(result.errors) == 0,
         "errors": result.errors,
@@ -137,22 +157,48 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
     return result
 
 
-def _verify_query_statement(query_statement: expr.Query, context: VerificationContext) -> None:
+def _get_in_scope_table_names(
+    query_statement: expr.Query, context: VerificationContext
+) -> set[str]:
+    in_scope = set()
+    from_clause = query_statement.find(expr.From)
+    join_clauses = query_statement.args.get("joins", [])
+    for clause in [from_clause] + join_clauses:
+        if clause:
+            for alias in clause.find_all(expr.TableAlias):
+                in_scope.add(alias.alias_or_name)
+            for t in clause.find_all(expr.Table):
+                in_scope.add(t.alias_or_name)
+                in_scope.add(t.name)
+    return in_scope
+
+
+def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
     if isinstance(query_statement, expr.Union):
         _verify_query_statement(query_statement.left, context)
         _verify_query_statement(query_statement.right, context)
         return
+    old_in_scope = context.current_in_scope_tables
+    context.current_in_scope_tables = old_in_scope | _get_in_scope_table_names(
+        query_statement, context
+    )
     for cte in query_statement.ctes:
-        _add_table_alias(cte, context)
+        cte_old_in_scope = context.current_in_scope_tables
+        context.current_in_scope_tables = set(context.dynamic_tables.keys())
         _verify_query_statement(cte.this, context)
+        context.current_in_scope_tables = cte_old_in_scope
+        _add_table_alias(cte, context)
     from_tables = _verify_from_tables(context, query_statement)
     if context.can_fix:
         _verify_select_clause(context, query_statement, from_tables)
         _verify_where_clause(context, query_statement, from_tables)
         _verify_sub_queries(context, query_statement)
+    context.current_in_scope_tables = old_in_scope
 
 
-def _verify_from_tables(context: VerificationContext, query_statement: expr.Query) -> list[expr.Table]:
+def _verify_from_tables(
+    context: VerificationContext, query_statement: expr.Query
+) -> list[expr.Table]:
     from_tables = _get_from_clause_tables(query_statement, context)
     for t in from_tables:
         found = False
@@ -164,7 +210,9 @@ def _verify_from_tables(context: VerificationContext, query_statement: expr.Quer
     return from_tables
 
 
-def _verify_sub_queries(context: VerificationContext, query_statement: expr.Query) -> None:
+def _verify_sub_queries(
+    context: VerificationContext, query_statement: expr.Query
+) -> None:
     for exp_type in [expr.Order, expr.Offset, expr.Limit, expr.Group, expr.Having]:
         for exp in find_direct(query_statement, exp_type):
             if exp:
@@ -205,7 +253,8 @@ def _verify_select_clause_element(
                     for c in config_t["columns"]:
                         if e.parent is not None:
                             e.parent.set(
-                                "expressions", e.parent.expressions + [sqlglot.parse_one(c)]
+                                "expressions",
+                                e.parent.expressions + [sqlglot.parse_one(c)],
                             )
         return False
     elif isinstance(e, expr.Tuple):
@@ -241,8 +290,10 @@ def _verify_col(
         or (all(t.name in context.dynamic_tables for t in from_tables))
         or (
             col.table == ""
-            and col.name
-            in [col for t_cols in context.dynamic_tables.values() for col in t_cols]
+            and any(
+                col.name in context.dynamic_tables.get(tbl, set())
+                for tbl in context.current_in_scope_tables
+            )
         )
         or (
             any(

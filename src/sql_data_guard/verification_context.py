@@ -25,6 +25,7 @@ class VerificationContext:
         self._dynamic_tables: dict[str, set[str]] = {}
         self._dialect = dialect or ""
         self._risk: list[float] = []
+        self.current_in_scope_tables: set[str] = set()
 
     @property
     def can_fix(self) -> bool:
