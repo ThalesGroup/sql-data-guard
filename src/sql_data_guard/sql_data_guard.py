@@ -8,7 +8,13 @@ from sqlglot.optimizer.simplify import simplify
 from .restriction_validation import validate_restrictions, UnsupportedRestrictionError
 from .restriction_verification import verify_restrictions
 from .verification_context import VerificationContext
-from .verification_utils import split_to_expressions, find_direct, table_matches
+from .verification_utils import (
+    split_to_expressions,
+    find_direct,
+    table_matches,
+    get_where,
+    get_from,
+)
 
 _DEFAULT_MAX_LENGTH = 10_000
 
@@ -142,7 +148,7 @@ def _verify_where_clause(
     select_statement: expr.Query,
     from_tables: List[expr.Table],
 ):
-    where_clause = select_statement.find(expr.Where)
+    where_clause = get_where(select_statement)
     if where_clause:
         for sub in where_clause.find_all(expr.Subquery, expr.Exists):
             _verify_query_statement(sub.this, context)
@@ -154,7 +160,7 @@ def _verify_static_expression(
     select_statement: expr.Query, context: VerificationContext
 ) -> bool:
     has_static_exp = False
-    where_clause = select_statement.find(expr.Where)
+    where_clause = get_where(select_statement)
     if where_clause:
         and_exps = list(split_to_expressions(where_clause.this, expr.And))
         for e in and_exps:
@@ -198,19 +204,31 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
         _verify_query_statement(query_statement.right, context)
         return
     for cte in query_statement.ctes:
-        _add_table_alias(cte, context)
         context.cte_names.add(cte.alias_or_name)
         _verify_query_statement(cte.this, context)
+        # registered only after the body is verified, so a body cannot authorize its own columns
+        _add_table_alias(cte, context)
     from_tables = _verify_from_tables(context, query_statement)
-    if context.can_fix:
-        _verify_select_clause(context, query_statement, from_tables)
-        _verify_other_clauses_columns(context, query_statement, from_tables)
-        _verify_where_clause(context, query_statement, from_tables)
-        _verify_sub_queries(context, query_statement)
+    try:
+        if context.can_fix:
+            _verify_select_clause(context, query_statement, from_tables)
+            _verify_other_clauses_columns(context, query_statement, from_tables)
+            _verify_where_clause(context, query_statement, from_tables)
+            _verify_sub_queries(context, query_statement)
+    finally:
+        context.pop_sources()
 
 
 def _verify_from_tables(context, query_statement):
-    from_tables = _get_from_clause_tables(query_statement, context)
+    sources = set()
+    from_tables = _get_from_clause_tables(query_statement, context, sources)
+    for t in from_tables:
+        if not t.db and t.name in context.cte_names:
+            sources.add(t.name)
+            if t.alias:  # CTE referenced through an alias: the alias exposes the same columns
+                context.dynamic_tables[t.alias] = context.dynamic_tables.get(t.name, set())
+                sources.add(t.alias)
+    context.push_sources(sources)  # popped by _verify_query_statement
     for t in from_tables:
         found = False
         for config_t in context.config["tables"]:
@@ -240,8 +258,8 @@ def _verify_select_clause(
 ):
     for select in select_clause.selects:
         for sub in select.find_all(expr.Subquery):
-            _add_table_alias(sub, context)
             _verify_query_statement(sub.this, context)
+            _add_table_alias(sub, context)
     to_remove = []
     for e in select_clause.expressions:
         if not _verify_select_clause_element(from_tables, context, e):
@@ -276,6 +294,9 @@ def _verify_select_clause_element(
         return result
     else:
         for func_args in e.find_all(expr.Column):
+            # columns of nested queries are verified together with those queries
+            if func_args.parent_select is not e.parent_select:
+                continue
             if not _verify_select_clause_element(from_tables, context, func_args):
                 return False
     return True
@@ -310,13 +331,12 @@ def _verify_col(
                 ):
                     return True
                 return _reject_col(col, context, in_select)
+    visible = context.visible_dynamic_tables
     if (
-        (col.table != "" and col.table in context.dynamic_tables)
-        or (all(t.name in context.cte_names for t in from_tables))
+        (col.table != "" and col.table in visible)
         or (
             col.table == ""
-            and col.name
-            in [col for t_cols in context.dynamic_tables.values() for col in t_cols]
+            and col.name in [c for t_cols in visible.values() for c in t_cols]
         )
         or (
             any(
@@ -372,7 +392,7 @@ def _verify_other_clauses_columns(
 
 
 def _get_from_clause_tables(
-    select_clause: expr.Query, context: VerificationContext
+    select_clause: expr.Query, context: VerificationContext, sources: set
 ) -> List[expr.Table]:
     """
     Extracts table references from the FROM clause of an SQL query.
@@ -380,12 +400,13 @@ def _get_from_clause_tables(
     Args:
         select_clause (dict): The FROM clause of the SQL query.
         context (VerificationContext): The context for verification.
+        sources (set): Filled with the names of dynamic tables (subquery/lateral/unnest aliases).
 
     Returns:
         List[_TableRef]: A list of table references to find in the FROM clause.
     """
     result = []
-    from_clause = select_clause.find(expr.From)
+    from_clause = get_from(select_clause)
     join_clauses = select_clause.args.get("joins", [])
     for clause in [from_clause] + join_clauses:
         if clause:
@@ -393,18 +414,26 @@ def _get_from_clause_tables(
                 if isinstance(t, expr.Table):
                     result.append(t)
             for l in find_direct(clause, expr.Subquery):
-                _add_table_alias(l, context)
                 _verify_query_statement(l.this, context)
+                _add_table_alias(l, context, sources)
     for join_clause in join_clauses:
         for l in find_direct(join_clause, expr.Lateral):
-            _add_table_alias(l, context)
             _verify_query_statement(l.this.find(expr.Select), context)
+            _add_table_alias(l, context, sources)
         for u in find_direct(join_clause, expr.Unnest):
-            _add_table_alias(u, context)
+            _add_table_alias(u, context, sources)
     return result
 
 
-def _add_table_alias(exp: expr.Expression, context: VerificationContext):
+def _add_table_alias(
+    exp: expr.Expression, context: VerificationContext, sources: set = None
+):
+    if sources is not None and not list(find_direct(exp, expr.TableAlias)):
+        # derived table without an alias: still a source of columns for its query
+        if isinstance(exp, expr.Subquery) and hasattr(exp.this, "named_selects"):
+            name = f"__unnamed_{id(exp)}"
+            context.dynamic_tables[name] = set(exp.this.named_selects)
+            sources.add(name)
     for table_alias in find_direct(exp, expr.TableAlias):
         if isinstance(table_alias, expr.TableAlias):
             if len(table_alias.columns) > 0:
@@ -412,3 +441,5 @@ def _add_table_alias(exp: expr.Expression, context: VerificationContext):
             else:
                 column_names = {c for c in exp.this.named_selects}
             context.dynamic_tables[table_alias.alias_or_name] = column_names
+            if sources is not None:
+                sources.add(table_alias.alias_or_name)

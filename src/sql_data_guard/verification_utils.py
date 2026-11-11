@@ -31,3 +31,13 @@ def table_matches(table: expr.Table, config_table: dict) -> bool:
     if table.db and database_name:
         return table.db.lower() == database_name.lower()
     return True
+
+
+def get_where(query: expr.Expression):
+    """The WHERE clause of this query only (not of nested CTEs or subqueries)."""
+    return query.args.get("where")
+
+
+def get_from(query: expr.Expression):
+    """The FROM clause of this query only. Newer sqlglot versions call the arg "from_"."""
+    return query.args.get("from") or query.args.get("from_")

@@ -4,7 +4,7 @@ import sqlglot
 import sqlglot.expressions as expr
 
 from .verification_context import VerificationContext
-from .verification_utils import split_to_expressions
+from .verification_utils import split_to_expressions, get_where
 
 
 def verify_restrictions(
@@ -12,9 +12,8 @@ def verify_restrictions(
     context: VerificationContext,
     from_tables: List[expr.Table],
 ):
-    where_clause = select_statement.find(expr.Where)
+    where_clause = get_where(select_statement)
     if where_clause is None:
-        where_clause = select_statement.find(expr.Where)
         and_exps = []
     else:
         and_exps = list(split_to_expressions(where_clause.this, expr.And))

@@ -12,6 +12,9 @@
 - Tokenizer errors no longer raise; they return a rejection. Parse errors no longer log the SQL text.
 - Restriction values are escaped for the SQL dialect.
 
+- An outer query no longer inherits the WHERE of a nested CTE/subquery, so its own restrictions are injected.
+- A column selected inside a derived table/CTE no longer authorizes itself: aliases are registered after their body is verified, and visible only to the query that uses them.
+
 ### Fixed
 - `<`, `>`, `<=`, `>=` and `BETWEEN` restrictions compare numerically, and `BETWEEN` no longer crashes on non-numeric values.
 - Injected conditions use the configured comparison operator instead of always `=`.
