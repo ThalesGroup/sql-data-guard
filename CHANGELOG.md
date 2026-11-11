@@ -39,6 +39,8 @@
 - Docs: `docs/manual.md` is now a full configuration and behavior reference, the README examples show real output (and no longer claim a payload-detection module), `SECURITY.md` and `CONTRIBUTING.md` describe the actual policy and workflow.
 - CI: lint/type-check pinned to the oldest supported sqlglot; the Python compatibility matrix runs on `ubuntu-22.04` (older Python builds are not available on `ubuntu-latest`); workflow file typo fixed (`python-compatibility-test.yaml`).
 
+- Tests that execute SQL on SQLite skip only when the installed SQLite is too old for the feature (`FULL/RIGHT JOIN` < 3.39, `CONCAT` < 3.44). The library logs through its own `sql_data_guard` logger instead of the root logger.
+
 ### Breaking changes
 - Queries that filter, join, group or order by columns outside the allow-list are now rejected.
 - `result["errors"]` is a sorted list instead of a set.

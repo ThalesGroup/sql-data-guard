@@ -20,6 +20,8 @@ from .verification_utils import (
 
 _DEFAULT_MAX_LENGTH = 10_000
 
+logger = logging.getLogger(__name__)
+
 
 def verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
     """
@@ -41,7 +43,7 @@ def verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
         return _verify_sql(sql, config, dialect)
     except Exception as e:  # noqa: BLE001 - fail closed on anything unexpected
         # Log the exception type only: messages may contain parts of the SQL.
-        logging.error(f"Unexpected error while verifying SQL ({type(e).__name__})")
+        logger.error(f"Unexpected error while verifying SQL ({type(e).__name__})")
         return {
             "allowed": False,
             "errors": [f"Internal error while verifying SQL ({type(e).__name__})"],
@@ -89,7 +91,7 @@ def _verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
         statements = [s for s in sqlglot.parse(sql, dialect=dialect) if s is not None]
     except sqlglot.errors.SqlglotError as e:
         # Do not log the SQL itself: it may contain sensitive literals.
-        logging.error(f"Error parsing SQL ({type(e).__name__}, length {len(sql)})")
+        logger.error(f"Error parsing SQL ({type(e).__name__}, length {len(sql)})")
         result.add_error(f"Error parsing sql: {e}", False, 0.9)
     else:
         if len(statements) == 0:
@@ -209,6 +211,7 @@ def _verify_static_expression(
             if _has_static_expression(context, e):
                 has_static_exp = True
     if has_static_exp:
+        # simplify() rewrites the WHERE clause in place; its return value is not needed
         simplify(where_clause)
     return not has_static_exp
 
