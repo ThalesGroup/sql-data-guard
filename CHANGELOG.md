@@ -11,9 +11,14 @@
 - Block dangerous functions (file access, sleep, command execution, etc.). Extend with `blocked_functions` in the config.
 - Tokenizer errors no longer raise; they return a rejection. Parse errors no longer log the SQL text.
 - Restriction values are escaped for the SQL dialect.
-
 - An outer query no longer inherits the WHERE of a nested CTE/subquery, so its own restrictions are injected.
 - A column selected inside a derived table/CTE no longer authorizes itself: aliases are registered after their body is verified, and visible only to the query that uses them.
+
+- `JOIN ... USING (col)` columns are checked against the allow-list (also on the joined table).
+- `SELECT ... INTO` and locking clauses (`FOR UPDATE`/`FOR SHARE`) are rejected.
+- More functions are blocked by default (`set_config`, `getenv`, `randomblob`, `zeroblob`, `version`, `current_setting`, `sqlite_version`, `UTL_*`/`DBMS_*` packages) and `@@` system variables.
+- `verify_sql` fails closed: any unexpected error (deep nesting, malformed config, non-string SQL) returns a rejection instead of raising.
+- Duplicate table entries in the config are rejected instead of silently widening the allow-list.
 
 ### Fixed
 - `<`, `>`, `<=`, `>=` and `BETWEEN` restrictions compare numerically, and `BETWEEN` no longer crashes on non-numeric values.

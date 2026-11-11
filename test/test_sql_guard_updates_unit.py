@@ -436,10 +436,20 @@ class TestJoins:
         )
 
     def test_inner_join_using_test_sql(self, config):
+        # `access` is an allowed column of both tables
         verify_sql_test(
+            "SELECT id, prod_name FROM products1 INNER JOIN customers USING (access) WHERE id = 324 AND access = 'restricted' ",
+            config,
+        )
+
+    def test_inner_join_using_not_allowed_column(self, config):
+        # USING compares customers.id as well, and it is not an allowed column of customers
+        res = verify_sql(
             "SELECT id, prod_name FROM products1 INNER JOIN customers USING (id) WHERE id = 324 AND access = 'restricted' ",
             config,
         )
+        assert not res["allowed"]
+        assert res["fixed"] is None
 
     def test_inner_join_on_test_sql(self, config):
         verify_sql_test(

@@ -35,6 +35,27 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             - "fixed" (Optional[str]): The fixed query if modifications were made.
             - "risk" (float): Verification risk score (0 - no risk, 1 - high risk)
     """
+    try:
+        return _verify_sql(sql, config, dialect)
+    except Exception as e:  # noqa: BLE001 - fail closed on anything unexpected
+        # Log the exception type only: messages may contain parts of the SQL.
+        logging.error(f"Unexpected error while verifying SQL ({type(e).__name__})")
+        return {
+            "allowed": False,
+            "errors": [f"Internal error while verifying SQL ({type(e).__name__})"],
+            "fixed": None,
+            "risk": 1.0,
+        }
+
+
+def _verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
+    if not isinstance(sql, str):
+        return {
+            "allowed": False,
+            "errors": ["SQL must be a string."],
+            "fixed": None,
+            "risk": 1.0,
+        }
     # Check if the config is empty or invalid (e.g., no 'tables' key)
     if not config or not isinstance(config, dict) or "tables" not in config:
         return {
@@ -128,8 +149,19 @@ _DEFAULT_BLOCKED_FUNCTIONS = frozenset(
         "read_text",
         "read_blob",
         "glob",
+        "set_config",
+        "getenv",
+        "randomblob",
+        "zeroblob",
+        "version",
+        "current_setting",
+        "sqlite_version",
+        "sqlite_source_id",
     }
 )
+
+# Package/schema prefixes (Oracle, SQL Server...) whose functions are never allowed.
+_BLOCKED_FUNCTION_PREFIXES = ("utl_", "dbms_", "sys.", "xp_", "sp_")
 
 
 def _verify_functions(query: expr.Expression, context: VerificationContext):
@@ -139,8 +171,15 @@ def _verify_functions(query: expr.Expression, context: VerificationContext):
     }
     for func in query.find_all(expr.Func):
         name = (func.name if isinstance(func, expr.Anonymous) else func.sql_name()).lower()
-        if name in blocked:
+        qualified = name
+        if isinstance(func.parent, expr.Dot) and func.parent.expression is func:
+            qualified = f"{func.parent.this.sql().lower()}.{name}"
+        if name in blocked or qualified.startswith(_BLOCKED_FUNCTION_PREFIXES):
             context.add_error(f"Function {name} is not allowed", False, 0.9)
+    # system variables such as @@version
+    for param in query.find_all(expr.SessionParameter, expr.Parameter):
+        if param.sql().startswith("@@"):
+            context.add_error(f"System variable {param.sql()} is not allowed", False, 0.7)
 
 
 def _verify_where_clause(
@@ -203,6 +242,10 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
         _verify_query_statement(query_statement.left, context)
         _verify_query_statement(query_statement.right, context)
         return
+    if query_statement.args.get("into"):
+        context.add_error("SELECT INTO is not allowed", False, 0.9)
+    if query_statement.args.get("locks"):
+        context.add_error("Locking clauses (FOR UPDATE / FOR SHARE) are not allowed", False, 0.7)
     for cte in query_statement.ctes:
         context.cte_names.add(cte.alias_or_name)
         _verify_query_statement(cte.this, context)
@@ -378,6 +421,9 @@ def _verify_other_clauses_columns(
         for k in ("where", "group", "having", "order", "qualify")
     ]
     clauses += [j.args.get("on") for j in query_statement.args.get("joins") or []]
+    for join in query_statement.args.get("joins") or []:
+        for ident in join.args.get("using") or []:
+            _verify_using_column(ident, join, from_tables, context)
     select_aliases = {s.alias for s in query_statement.selects if s.alias}
     for clause in clauses:
         if clause is None:
@@ -389,6 +435,23 @@ def _verify_other_clauses_columns(
             if col.table == "" and col.name in select_aliases:
                 continue
             _verify_col(col, from_tables, context, in_select=False)
+
+
+def _verify_using_column(
+    ident: expr.Expression,
+    join: expr.Join,
+    from_tables: List[expr.Table],
+    context: VerificationContext,
+):
+    """JOIN ... USING (col) compares col on both sides, so it must be allowed on the joined table too."""
+    name = ident.name
+    right = join.this
+    if isinstance(right, expr.Table):
+        configured = [c for c in context.config["tables"] if table_matches(right, c)]
+        if configured and not any(name in c["columns"] for c in configured):
+            _reject_col(expr.column(name), context, False)
+            return
+    _verify_col(expr.column(name), from_tables, context, in_select=False)
 
 
 def _get_from_clause_tables(

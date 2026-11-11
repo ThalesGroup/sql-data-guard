@@ -28,10 +28,17 @@ def validate_restrictions(config: dict):
     if not tables:
         raise ValueError("Configuration must contain at least one table.")
 
+    seen = set()
     for table in tables:
+        if not isinstance(table, dict):
+            raise ValueError("Each table must be an object.")
         # Ensure that 'table_name' exists in each table
         if "table_name" not in table:
             raise ValueError("Each table must have a 'table_name' key.")
+        key = (str(table["table_name"]).lower(), str(table.get("database_name") or "").lower())
+        if key in seen:
+            raise ValueError(f"Table '{table['table_name']}' is defined more than once.")
+        seen.add(key)
             # Ensure that 'columns' exists and is not empty in each table
         if "columns" not in table or not table["columns"]:
             raise ValueError(

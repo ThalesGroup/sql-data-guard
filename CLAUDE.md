@@ -37,7 +37,8 @@ Key semantics to keep in mind:
 - `add_error(msg, can_fix, risk)`: a `can_fix=False` error means `fixed` is `None` and the query is simply rejected. Disallowed columns in SELECT are fixable (removed); disallowed columns in WHERE/JOIN/GROUP BY/HAVING/ORDER BY are not.
 - The column allow-list applies to every clause, not just SELECT (`_verify_other_clauses_columns`). Tests that filter on a column must include it in the test config's `columns`; note that adding a column to a config also changes `SELECT *` expansion.
 - Functions are checked against a default deny-list plus `config["blocked_functions"]` (`_verify_functions`).
-- `result["errors"]` is a sorted list.
+- `result["errors"]` is a sorted list. `verify_sql` never raises: unexpected errors become a rejection.
+- `test/test_bypass_unit.py` holds adversarial scenarios executed against seeded sqlite data (fails if forbidden data comes back). Add new bypass attempts there; list unfixed ones in its `_KNOWN_*` tables as strict xfails.
 
 Integrations built on the library:
 - `rest/sql_data_guard_rest.py` – Flask `POST /verify-sql`; the client supplies the policy config, so it is not an enforcement point for untrusted callers (`Dockerfile`).

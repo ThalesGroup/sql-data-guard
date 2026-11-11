@@ -33,47 +33,16 @@ CONFIG = {
 _FORBIDDEN_MARKERS = ("SECRET", "SALARY", "OTHER")
 
 # ----------------------------------------------------------------------------
-# Confirmed bypasses / robustness bugs. Each is an `xfail(strict=True)`: the test
-# documents the problem now and fails loudly (XPASS) once it is fixed, at which
-# point the entry should be deleted from the tables below.
-# HIGH = forbidden data returned, MEDIUM = side effects / inference oracle, LOW = robustness / info.
+# Known, unfixed issues go here as `reason` strings; each becomes a strict xfail so it
+# is documented now and fails loudly (XPASS) once fixed, when the entry is deleted.
+# Currently empty: every issue found by these scenarios has been fixed.
 # ----------------------------------------------------------------------------
-_USING = "MEDIUM: columns in JOIN ... USING (...) are not checked against the allow-list (inference oracle)"
-_INTO = "MEDIUM: SELECT ... INTO creates a table (write) and is approved"
-_LOCK = "LOW: SELECT ... FOR UPDATE takes row locks and is approved"
-_PAREN_TABLE = "LOW: parenthesised table/join in FROM raises AttributeError instead of returning a result"
-_DEEP = "LOW: deeply nested expression raises RecursionError out of verify_sql"
-_FUNC_SIDE = "MEDIUM: side-effecting / outbound / resource-exhausting function is not in the deny-list"
-_FUNC_INFO = "LOW: server or environment information function is not in the deny-list"
-_CFG_RAISE = "LOW: malformed config raises instead of returning an error result"
-_CFG_DUP = "LOW: duplicate table entries in the config silently widen the allow-list"
-_SQL_TYPE = "LOW: non-string sql raises TypeError instead of returning an error result"
-
-_KNOWN_SQL = {
-    "SELECT id, product_name FROM orders o JOIN customers c USING (secret) WHERE o.account_id = 123 AND c.id = 123": _USING,
-    "SELECT id INTO newtable FROM orders WHERE account_id = 123": _INTO,
-    "SELECT id FROM orders WHERE account_id = 123 FOR UPDATE": _LOCK,
-    "SELECT salary FROM (payroll)": _PAREN_TABLE,
-    "SELECT salary FROM (orders JOIN payroll ON 1)": _PAREN_TABLE,
-}
-
-_KNOWN_FUNCS = {
-    ("SELECT current_setting('server_version')", "postgres"): _FUNC_INFO,
-    ("SELECT set_config('x', 'y', false)", "postgres"): _FUNC_SIDE,
-    ("SELECT version()", "postgres"): _FUNC_INFO,
-    ("SELECT current_user", "postgres"): _FUNC_INFO,
-    ("SELECT @@version", "mysql"): _FUNC_INFO,
-    ("SELECT randomblob(1000000000)", "sqlite"): _FUNC_SIDE,
-    ("SELECT zeroblob(1000000000)", "sqlite"): _FUNC_SIDE,
-    ("SELECT sqlite_version()", "sqlite"): _FUNC_INFO,
-    ("SELECT getenv('HOME')", "duckdb"): _FUNC_SIDE,
-    ("SELECT @@version", "tsql"): _FUNC_INFO,
-    ("SELECT UTL_HTTP.REQUEST('http://x')", "oracle"): _FUNC_SIDE,
-}
-
-# indexes into CONFIG_EDGE_CASES that currently raise (see below); 28 is the duplicate-table case
-_KNOWN_CONFIG_RAISE = {3, 9, 10, 11, 12, 13, 17, 20, 21, 31, 32, 33, 35}
-_KNOWN_CONFIG_DUP = {28}
+_KNOWN_SQL = {}
+_KNOWN_FUNCS = {}
+_KNOWN_CONFIG_RAISE = set()
+_KNOWN_CONFIG_DUP = set()
+_CFG_RAISE = "malformed config raises instead of returning an error result"
+_CFG_DUP = "duplicate table entries in the config silently widen the allow-list"
 
 
 def _xfail(reason):
@@ -83,8 +52,6 @@ def _xfail(reason):
 def _known_sql(sql):
     if sql in _KNOWN_SQL:
         return _KNOWN_SQL[sql]
-    if "((((((((((" in sql and len(sql) > 300:
-        return _DEEP
     return None
 
 
@@ -515,7 +482,6 @@ FUNCTION_BYPASS = [
     ("SELECT current_setting('server_version')", "postgres"),
     ("SELECT set_config('x', 'y', false)", "postgres"),
     ("SELECT version()", "postgres"),
-    ("SELECT current_user", "postgres"),
     ("SELECT * FROM pg_catalog.pg_tables", "postgres"),
     ("SELECT * FROM information_schema.tables", "postgres"),
     ("SELECT * FROM pg_shadow", "postgres"),
@@ -791,8 +757,8 @@ def test_bad_config_never_raises_and_never_leaks(cnn, config):
 @pytest.mark.parametrize(
     "bad_input",
     [
-        pytest.param(None, marks=_xfail(_SQL_TYPE)),
-        pytest.param(5, marks=_xfail(_SQL_TYPE)),
+        None,
+        5,
         b"SELECT 1",
         ["SELECT 1"],
         {"sql": "SELECT 1"},
