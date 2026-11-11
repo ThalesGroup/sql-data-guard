@@ -3,10 +3,12 @@
 ## Unreleased
 
 ### Added
+- Column masking: `column_masks` per table (`redact` policy). A masked column is returned as a constant under its own name when selected directly, and rejected in every other use.
 - `allowed_functions` config option: allow-list mode for functions (deny-list and `blocked_functions` still win). `blocked_functions` and `allowed_functions` must be lists of non-empty strings.
 - `force_limit` config option: caps the rows returned by the outermost query (adds, clamps or replaces `LIMIT`, including `LIMIT ALL`/`NULL`/`-1`, expressions and `FETCH FIRST`).
 
 ### Security
+- Correlated sub-queries: a column qualified with an enclosing query's table alias (`o.notes`) is now checked against that table. Before, it was accepted if the sub-query's own table allowed a column of that name, giving an inference oracle on a forbidden column. Derived tables and `LATERAL` bodies are verified with the other tables of their FROM clause in scope.
 - Reject queries with more than one statement (`SELECT ...; DROP ...`) and empty input.
 - Columns used in WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY and QUALIFY are now checked against the allow-list.
 - Removed the `sub_select` qualifier bypass. Qualified columns resolve strictly against the table named in FROM.

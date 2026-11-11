@@ -1,3 +1,6 @@
+from .column_masking import validate_column_masks
+
+
 class UnsupportedRestrictionError(Exception):
     pass
 
@@ -114,3 +117,5 @@ def validate_restrictions(config: dict):
                 raise UnsupportedRestrictionError(
                     f"Invalid restriction: 'operation={operation}' is not supported."
                 )
+
+    validate_column_masks(config)

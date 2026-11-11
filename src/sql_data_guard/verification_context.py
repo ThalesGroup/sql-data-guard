@@ -23,6 +23,7 @@ class VerificationContext:
         self._dynamic_tables: Dict[str, Set[str]] = {}
         self._cte_scopes: List[Set[str]] = []
         self._source_scopes: List[Set[str]] = []
+        self._table_scopes: List[list] = []
         self._dialect = dialect
         self._risk: List[float] = []
 
@@ -74,6 +75,18 @@ class VerificationContext:
 
     def add_cte_name(self, name: str):
         self._cte_scopes[-1].add(name)
+
+    def push_tables(self, tables: list):
+        """Enter a query: the real tables of its FROM/JOIN, visible to it and to its sub-queries."""
+        self._table_scopes.append(list(tables))
+
+    def pop_tables(self):
+        self._table_scopes.pop()
+
+    @property
+    def table_scopes(self) -> List[list]:
+        """Tables of the query being verified and of its enclosing queries, innermost first."""
+        return list(reversed(self._table_scopes))
 
     def push_sources(self, names: Set[str]):
         """Enter a query: names of the dynamic tables (CTE/subquery aliases) in its FROM/JOIN."""

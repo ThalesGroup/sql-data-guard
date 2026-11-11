@@ -5,6 +5,7 @@ import sqlglot
 import sqlglot.expressions as expr
 from sqlglot.optimizer.simplify import simplify
 
+from .column_masking import find_mask, masked_select_item, mask_value, table_masks
 from .restriction_validation import validate_restrictions, UnsupportedRestrictionError
 from .restriction_verification import verify_restrictions
 from .verification_context import VerificationContext
@@ -330,6 +331,7 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
                 "Locking clauses (FOR UPDATE / FOR SHARE) are not allowed", False, 0.7
             )
         from_tables = _verify_from_tables(context, query_statement)
+        context.push_tables(from_tables)
         try:
             if context.can_fix:
                 _verify_select_clause(context, query_statement, from_tables)
@@ -337,6 +339,7 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
                 _verify_where_clause(context, query_statement, from_tables)
                 _verify_sub_queries(context, query_statement)
         finally:
+            context.pop_tables()
             context.pop_sources()
     finally:
         context.pop_cte_scope()
@@ -426,17 +429,23 @@ def _verify_select_clause_element(
     if isinstance(e, expr.Column):
         if not _verify_col(e, from_tables, context):
             return False
+        _apply_mask(e, from_tables, context)
     elif isinstance(e, expr.Star):
         context.add_error("SELECT * is not allowed", True, 0.1)
         for t in from_tables:
             for config_t in context.config["tables"]:
                 if table_matches(t, config_t):
                     parent = e.parent
+                    masks = table_masks(config_t)
                     for c in config_t["columns"]:
                         if parent is not None:
-                            parent.set(
-                                "expressions", parent.expressions + [sqlglot.parse_one(c)]
+                            # a masked column is expanded to its mask, not to the real column
+                            item = (
+                                masked_select_item(masks[c.lower()], c)
+                                if c.lower() in masks
+                                else sqlglot.parse_one(c)
                             )
+                            parent.set("expressions", parent.expressions + [item])
         return False
     elif isinstance(e, expr.Tuple):
         result = True
@@ -452,6 +461,32 @@ def _verify_select_clause_element(
             if not _verify_select_clause_element(from_tables, context, func_args):
                 return False
     return True
+
+
+def _apply_mask(col: expr.Column, from_tables: List[expr.Table], context: VerificationContext):
+    """
+    Masks a selected column. A column that is a direct item of the SELECT list (`ssn` or
+    `ssn AS x`) is rewritten to its mask; a masked column used any other way (inside a function
+    or expression) cannot be masked and is rejected.
+    """
+    mask = find_mask(col, context.table_scopes or [from_tables], context.config)
+    if mask is None:
+        return
+    parent = col.parent
+    if isinstance(parent, expr.Select):
+        col.replace(masked_select_item(mask, col.name))
+    elif isinstance(parent, expr.Alias) and isinstance(parent.parent, expr.Select):
+        col.replace(mask_value(mask))
+    else:
+        _reject_masked(col, context)
+        return
+    context.add_error(f"Column {col.name} is masked", True, 0.1)
+
+
+def _reject_masked(col: expr.Column, context: VerificationContext):
+    context.add_error(
+        f"Column {col.name} is masked and can only be selected directly", False, 0.8
+    )
 
 
 def _verify_col(
@@ -472,12 +507,20 @@ def _verify_col(
         bool: True if the column reference is allowed, False otherwise.
     """
     if col.table:
-        # A qualifier that names a table in this FROM clause is resolved strictly
-        # against that table, even if a dynamic table shares the same name.
-        for t in from_tables:
-            if same_name(t.alias_or_name, col.table) and t.name not in context.cte_names:
+        # A qualifier that names a table is resolved strictly against that table, even if a dynamic
+        # table shares the name. The innermost query that has such a table wins: a correlated
+        # sub-query can refer to a table of an enclosing query (`o.notes`), and the column must be
+        # allowed on *that* table, not on whichever table the sub-query happens to select from.
+        for scope in context.table_scopes or [from_tables]:
+            matches = [
+                t
+                for t in scope
+                if same_name(t.alias_or_name, col.table) and t.name not in context.cte_names
+            ]
+            if matches:
                 if any(
                     column_in(col, config_t["columns"])
+                    for t in matches
                     for config_t in context.config["tables"]
                     if table_matches(t, config_t)
                 ):
@@ -545,6 +588,8 @@ def _verify_other_clauses_columns(
             if col.table == "" and col.name.lower() in {a.lower() for a in select_aliases}:
                 continue
             _verify_col(col, from_tables, context, in_select=False)
+            if find_mask(col, context.table_scopes or [from_tables], context.config):
+                _reject_masked(col, context)
 
 
 def _verify_using_column(
@@ -564,6 +609,8 @@ def _verify_using_column(
             _reject_col(expr.column(name), context, False)
             return
     _verify_col(expr.column(name), from_tables, context, in_select=False)
+    if find_mask(expr.column(name), context.table_scopes or [from_tables], context.config):
+        _reject_masked(expr.column(name), context)
 
 
 def _get_from_clause_tables(
@@ -583,20 +630,27 @@ def _get_from_clause_tables(
     result = []
     from_clause = get_from(select_clause)
     join_clauses = select_clause.args.get("joins", [])
-    for clause in [from_clause] + join_clauses:
-        if clause:
-            for t in find_direct(clause, expr.Table):
-                if isinstance(t, expr.Table):
-                    result.append(t)
-            for l in find_direct(clause, expr.Subquery):
-                _verify_query_statement(l.this, context)
-                _add_table_alias(l, context, sources)
-    for join_clause in join_clauses:
-        for l in find_direct(join_clause, expr.Lateral):
-            _verify_query_statement(l.this.find(expr.Select), context)
-            _add_table_alias(l, context, sources)
-        for u in find_direct(join_clause, expr.Unnest):
-            _add_table_alias(u, context, sources)
+    clauses = [c for c in [from_clause] + join_clauses if c]
+    for clause in clauses:
+        for t in find_direct(clause, expr.Table):
+            if isinstance(t, expr.Table):
+                result.append(t)
+    # Derived tables and LATERAL bodies can refer to the other tables of this FROM clause
+    # (LATERAL in PostgreSQL, MySQL, DuckDB...), so they are verified with those tables in scope.
+    context.push_tables(result)
+    try:
+        for clause in clauses:
+            for sub in find_direct(clause, expr.Subquery):
+                _verify_query_statement(sub.this, context)
+                _add_table_alias(sub, context, sources)
+        for join_clause in join_clauses:
+            for lateral in find_direct(join_clause, expr.Lateral):
+                _verify_query_statement(lateral.this.find(expr.Select), context)
+                _add_table_alias(lateral, context, sources)
+            for unnest in find_direct(join_clause, expr.Unnest):
+                _add_table_alias(unnest, context, sources)
+    finally:
+        context.pop_tables()
     return result
 
 

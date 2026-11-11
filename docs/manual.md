@@ -53,6 +53,7 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `tables[].database_name` | no | Database/schema of the table. When set, a query that qualifies the table (`other_db.orders`) must use this name. |
 | `tables[].columns` | yes | Non-empty list of allowed columns. See [What is checked](#what-is-checked). |
 | `tables[].restrictions` | no | Row restrictions that must hold on every query of this table (see below). |
+| `tables[].column_masks` | no | Columns returned masked instead of in clear text. See [Column masking](#column-masking). |
 | `max_length` | no | Maximum SQL length in characters (default 10,000). Longer queries are rejected. |
 | `blocked_functions` | no | Extra function names to reject, added to the built-in list. |
 | `allowed_functions` | no | Allow-list mode: when present, only these functions may be called. See [Function policy](#function-policy). |
@@ -88,6 +89,29 @@ Comparisons are numeric (`9 > 10` is false). String values in the configuration 
 
 An unsupported `operation`, a malformed `BETWEEN`/`IN`, a missing `table_name`/`columns`, an empty `tables` list, or a duplicated table makes `verify_sql` return `allowed: false` with a message explaining the problem (the validation itself is `restriction_validation.validate_restrictions`, which raises `UnsupportedRestrictionError` / `ValueError`).
 
+## Column masking
+
+Dropping a sensitive column from the result changes its shape and can break the caller. A *masked* column stays in the result under the same name, but its value is replaced, so the real value never leaves the database:
+
+```json
+{
+  "table_name": "users",
+  "columns": ["id", "name", "ssn"],
+  "column_masks": [{"column": "ssn", "policy": "redact", "replacement": "****"}]
+}
+```
+
+```text
+SELECT id, ssn FROM users WHERE id = 1   ->   SELECT id, '****' AS ssn FROM users WHERE id = 1
+SELECT * FROM users                      ->   SELECT id, name, '****' AS ssn FROM users   (plus the missing restriction)
+```
+
+- A masked column must also be listed in `columns`, cannot be used in a `restriction`, and can be masked only once. `replacement` defaults to `****` and is escaped for the dialect.
+- `redact` is the only policy for now. Other policies (a partial or hashed value) need functions that are named differently in each database, so they will be added per dialect.
+- A masked column may **only be selected directly**: `ssn`, `u.ssn`, `ssn AS x`, or through `SELECT *`. Every other use is rejected, because the mask could not be applied and the caller could otherwise learn the value a comparison at a time: `WHERE ssn LIKE 'a%'`, `ORDER BY ssn`, `GROUP BY`, `JOIN ... ON/USING`, and use inside a function or expression (`lower(ssn)`, `count(ssn)`, `CASE ... ssn ...`), including from a correlated sub-query that refers to the outer table's masked column.
+- The mask is applied where the table is selected, so derived tables, CTEs, sub-queries and `UNION` branches that select the column return the masked value.
+- A column that is not qualified and could come from several tables is masked if any of them masks it. A qualifier (`o.ssn`) decides which table is meant.
+
 ## Function policy
 
 Function names are compared case-insensitively. Three layers apply, and a deny always wins:
@@ -120,6 +144,7 @@ Anything that is not a plain positive integer is replaced too, because several d
 ## What is checked
 
 - **One statement, read-only.** Only a single `SELECT` (including `UNION`/`INTERSECT`/`EXCEPT` and `WITH`) is allowed. Multiple statements, `INSERT`/`UPDATE`/`DELETE`/DDL, commands (`PRAGMA`, `SET`, `COPY`, `ATTACH` ...), `SELECT ... INTO`, locking clauses (`FOR UPDATE`) and data-modifying CTEs are rejected.
+- **Correlated sub-queries.** A column qualified with the alias of a table of an enclosing query (`o.notes` inside a sub-query) is checked against that table, not against the tables the sub-query selects from.
 - **Tables.** Every table in `FROM`/`JOIN`, in every nested query, must be in `tables`. A CTE name can be used as a table only inside the query that defines it; it never makes a real table of the same name usable.
 - **Columns, in every clause.** Columns in `SELECT`, `WHERE`, `JOIN ... ON`/`USING`, `GROUP BY`, `HAVING`, `ORDER BY` and window clauses must be allowed for their table. A disallowed column in `SELECT` is removed (a fixable error); anywhere else the query is rejected, because removing it would change the meaning of the query. Columns of derived tables and CTEs are checked where they come from.
 - **Row restrictions** for each table, in each query that reads it (see above).

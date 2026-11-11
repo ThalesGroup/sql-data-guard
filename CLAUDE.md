@@ -31,12 +31,14 @@ The verification pipeline lives in `src/sql_data_guard/` and spans several modul
 - `verification_context.py` – per-call state: errors, a `can_fix` flag, risk scores (averaged), `dynamic_tables` (CTE/subquery/lateral aliases and their columns) and `cte_names` (the only dynamic names that may be referenced as a table).
 - `restriction_verification.py` – checks that each configured restriction appears among the top-level AND conjuncts of WHERE and injects the missing ones. Comparisons are numeric.
 - `restriction_validation.py` – validates the config's restriction operations; raises `UnsupportedRestrictionError` / `ValueError`, which `verify_sql` turns into an error result.
+- `column_masking.py` – validation and lookup of per-table `column_masks`; the SELECT-clause code rewrites a directly selected masked column and rejects every other use of it.
 - `verification_utils.py` – `split_to_expressions`, `find_direct` (direct children only; prefer it over `find`, which searches nested subqueries too), and `table_matches` (name plus optional `database_name` match).
 
 Key semantics to keep in mind:
 - `add_error(msg, can_fix, risk)`: a `can_fix=False` error means `fixed` is `None` and the query is simply rejected. Disallowed columns in SELECT are fixable (removed); disallowed columns in WHERE/JOIN/GROUP BY/HAVING/ORDER BY are not.
 - The column allow-list applies to every clause, not just SELECT (`_verify_other_clauses_columns`). Tests that filter on a column must include it in the test config's `columns`; note that adding a column to a config also changes `SELECT *` expansion.
-- Functions are checked against a default deny-list plus `config["blocked_functions"]` (`_verify_functions`).
+- Functions are checked against a default deny-list plus `config["blocked_functions"]`, and `config["allowed_functions"]` when set (`_verify_functions`); `force_limit` caps the outermost query's rows (`_enforce_force_limit`).
+- `VerificationContext` keeps scope stacks (CTE names, dynamic-table sources, real tables). Qualified columns resolve through the table scopes innermost-first, so correlated sub-queries are checked against the table they really refer to; derived tables/LATERAL bodies are verified with their sibling tables in scope.
 - `result["errors"]` is a sorted list. `verify_sql` never raises: unexpected errors become a rejection.
 - `test/test_bypass_unit.py` holds adversarial scenarios executed against seeded sqlite data (fails if forbidden data comes back). Add new bypass attempts there; list unfixed ones in its `_KNOWN_*` tables as strict xfails.
 
