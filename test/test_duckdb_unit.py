@@ -10,10 +10,12 @@ from sql_data_guard import verify_sql
 def _fetch_dict(
     con: duckdb.DuckDBPyConnection, query: str
 ) -> Generator[dict, None, None]:
-    handle = con.sql(query)
+    # execute() + cursor works on all DuckDB versions; Relation.fetchmany() was removed
+    handle = con.execute(query)
+    columns = [d[0] for d in handle.description]
     while batch := handle.fetchmany(100):
         for row in batch:
-            yield {c: row[idx] for idx, c in enumerate(handle.columns)}
+            yield {c: row[idx] for idx, c in enumerate(columns)}
 
 
 def _verify_sql_test_duckdb(
