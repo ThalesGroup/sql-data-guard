@@ -9,6 +9,10 @@
 - `force_limit` config option: caps the rows returned by the outermost query (adds, clamps or replaces `LIMIT`, including `LIMIT ALL`/`NULL`/`-1`, expressions and `FETCH FIRST`).
 
 ### Security
+- MCP wrapper: the rewritten query was always written to an argument called `query`, whatever `arg-name` said. With the postgres example (`arg-name: sql`) a blocked query was still sent to the server unchanged. It is now written to the configured argument.
+- MCP wrapper: a query that cannot be repaired is no longer replaced by a `SELECT ... UNION ALL SELECT '<error>'` query. The error texts contain parts of the attacker's query and were pasted into SQL unescaped. The wrapper now answers the client itself and nothing reaches the server.
+- MCP wrapper: the message that was verified is the message that is forwarded (re-serialised), and messages with duplicate JSON keys, batches and malformed `tools/call` are refused, so a difference between JSON parsers cannot hide a second query. A repaired query is verified again before it is sent.
+- MCP wrapper: tools that are not configured are refused (see Breaking changes), so a second SQL tool such as `write_query` cannot bypass the guard.
 - Correlated sub-queries: a column qualified with an enclosing query's table alias (`o.notes`) is now checked against that table. Before, it was accepted if the sub-query's own table allowed a column of that name, giving an inference oracle on a forbidden column. Derived tables and `LATERAL` bodies are verified with the other tables of their FROM clause in scope.
 - Reject queries with more than one statement (`SELECT ...; DROP ...`) and empty input.
 - Columns used in WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY and QUALIFY are now checked against the allow-list.
@@ -39,6 +43,8 @@
 - An invalid restriction config returns an error result instead of raising `ValueError`.
 
 ### Changed
+- MCP wrapper: no longer crashes on client responses and notifications (no `method`), server messages without an `id`, log lines that are not JSON, or output chunks that cut a line; validates its configuration at start with a clear message; documented in `docs/mcp-wrapper.md`. The postgres example now uses the `postgres` dialect.
+- Dify plugin 0.0.3: the `errors` variable is a sorted list with any library release, input is validated (the policy must be a JSON object, an empty dialect means the default), README and PRIVACY corrected, tests added. The plugin has no telemetry.
 - `sqlglot` is now bounded to `>=25.20.1,<31` (the range the test-suite passes on). CI tests the oldest and newest allowed versions, plus an informational job against the newest sqlglot ignoring the bound.
 - CI: full unit-suite on the Python 3.8-3.12 matrix and on pull requests, coverage (minimum 90%), ruff and mypy.
 - Release workflow retries the post-publish install instead of sleeping a fixed time, and also runs the bypass scenarios against the published package.
@@ -53,6 +59,7 @@
 - Docker images: built only after a successful PyPI release, from the released commit, pinned to the released library version, tagged with the version (they were tagged `main`/`latest`), and the REST image runs as a non-root user.
 
 ### Breaking changes
+- MCP wrapper: a `tools/call` for a tool that is in neither `mcp-tools` nor the new `passthrough-tools` list is refused. Add the harmless tools you need (for example `list_tables`) to `passthrough-tools`; the examples are updated. The wrapper's output to the client now contains only JSON-RPC messages (server logs go to standard error), and blocked queries get a tool error (`isError: true`) from the wrapper instead of a result row from the database.
 - Python 3.8 and 3.9 are no longer supported (`requires-python >=3.10`). Both are past end of life, and sqlglot 27+ already requires 3.9 or newer, so 3.8 users could not get a current parser. pip keeps installing the last compatible release for them. The CI matrix now covers Python 3.10-3.14.
 - Queries that filter, join, group or order by columns outside the allow-list are now rejected.
 - `result["errors"]` is a sorted list instead of a set.

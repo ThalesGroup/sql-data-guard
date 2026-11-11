@@ -153,6 +153,10 @@ curl -X POST http://localhost:5000/verify-sql \
          }'
 ```
 
+## MCP Wrapper
+
+sql-data-guard can also protect an MCP server that talks to a database: the wrapper verifies the SQL of every tool call before the server sees it, and refuses tools that could run SQL without the guard. See [the MCP wrapper guide](docs/mcp-wrapper.md).
+
 ## Contributing
 We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 

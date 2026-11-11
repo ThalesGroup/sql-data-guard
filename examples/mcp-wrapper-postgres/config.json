@@ -13,7 +13,7 @@
     }
   ],
   "sql-data-guard": {
-    "dialect": "sqlite",
+    "dialect": "postgres",
     "inject-response": true,
     "tables": [
       {

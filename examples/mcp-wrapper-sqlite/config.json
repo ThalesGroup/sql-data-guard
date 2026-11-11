@@ -15,6 +15,10 @@
       "arg-name": "query"
     }
   ],
+  "passthrough-tools": [
+    "list_tables",
+    "describe_table"
+  ],
   "sql-data-guard": {
     "dialect": "sqlite",
     "inject-response": true,

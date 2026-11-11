@@ -4,7 +4,7 @@ This is a Dify Python plugin that integrates [sql-data-guard](https://github.com
 
 ## Overview
 
-The SQL Data Guard plugin allows Dify users to enforce table/column restrictions, detect malicious payloads, and modify non-compliant queries dynamically. This is particularly useful when using LLMs to generate SQL queries, ensuring that only permitted data is accessed and SQL injection attacks are prevented.
+The SQL Data Guard plugin allows Dify users to enforce table/column/row restrictions, remove always-true conditions such as `OR 1 = 1`, and rewrite non-compliant queries. This is particularly useful when using LLMs to generate SQL queries, ensuring that only permitted data is accessed and SQL injection attacks are prevented.
 
 For more information about the main project, visit the [sql-data-guard repository](https://github.com/thalesgroup/sql-data-guard).
 
@@ -35,13 +35,15 @@ SELECT id, name FROM orders WHERE 1 = 1
 
 Result Output Variables:
 
-| Field         | Description                                                                                     | Example Value                                                                                                                                                                                            |
-|---------------|---------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| allowed       | Boolean indicating whether the query complies with the policy configuration                     | false                                                                                                                                                                                                     |
-| errors        | List of validation errors found in the query (e.g., restricted columns, injection attempts)     | Column name not allowed. Column removed from SELECT clause;<br>Always-True expression is not allowed;<br>Missing restriction for table: orders column: account_id value: 123                                |
-| fixed         | Modified query that complies with the policy (only present if query was non-compliant)           | SELECT id, product_name, account_id FROM orders WHERE account_id = 123                                                                                                                                   |
-| verified_sql  | The validated/fixed SQL query ready for execution                                                | SELECT id, product_name, account_id FROM orders WHERE account_id = 123                                                                                                                                   |
-| risk          | Risk score between 0 and 1 indicating the severity of policy violations (0 = safe, 1 = unsafe) | 0.7                                                                                                                                                                                                       |
+| Field        | Description | Example value |
+|--------------|-------------|---------------|
+| allowed      | Whether the query complies with the policy as it is | false |
+| errors       | List of problems found (restricted columns, missing restrictions, always-true conditions...) | `Column name is not allowed. Column removed from SELECT clause`, `Missing restriction for table: orders column: account_id value: 123`, `Static expression is not allowed: 1 = 1` |
+| fixed_sql    | The repaired query. Empty when the query was allowed, or when it cannot be repaired | `SELECT id FROM orders WHERE account_id = 123` |
+| verified_sql | The query that is safe to run: the original if it was allowed, otherwise `fixed_sql` (empty when it cannot be repaired: do not run anything) | `SELECT id FROM orders WHERE account_id = 123` |
+| risk         | Risk between 0 (none) and 1 (high) | 0.53 |
+
+Run `verified_sql` only when it is not empty.
 
 ## Example Workflow
 

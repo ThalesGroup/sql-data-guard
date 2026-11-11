@@ -45,8 +45,8 @@ Key semantics to keep in mind:
 
 Integrations built on the library:
 - `rest/sql_data_guard_rest.py` – Flask `POST /verify-sql`; the client supplies the policy config, so it is not an enforcement point for untrusted callers. Optional bearer token via `APP_API_TOKEN`. The image runs it with gunicorn (`rest/gunicorn.conf.py`); `python sql_data_guard_rest.py` is the Flask development server, for local use only. The `Dockerfile` copies this file from the repo but installs the **library from PyPI** (pinned to the released version by the workflow), so this file must keep working with older library releases (for example `errors` was a set up to 0.1.9).
-- `mcpwrapper/mcp_wrapper.py` – stdio proxy that runs a real MCP server in Docker, intercepts `tools/call`, and verifies/rewrites the SQL argument (`wrapper.Dockerfile`; examples in `examples/`).
-- `plugins/dify/` – Dify tool plugin wrapping `verify_sql`; pins a published `sql_data_guard` version, so library changes do not reach it until released.
+- `mcpwrapper/mcp_wrapper.py` – stdio proxy that runs a real MCP server in Docker (`wrapper.Dockerfile`; examples in `examples/`, guide in `docs/mcp-wrapper.md`). `SqlGuardProxy` holds the decisions (testable without Docker, see `test/test_mcp_wrapper_unit.py`): `mcp-tools` are verified, `passthrough-tools` forwarded, every other tool refused; a query that cannot be repaired is answered by the wrapper and never reaches the server; the verified message is the one forwarded. Keep it a single file: the image copies it standalone, and `docker` is imported lazily.
+- `plugins/dify/` – Dify tool plugin wrapping `verify_sql`; pins a published `sql_data_guard` version, so library changes do not reach it until released. Its tests (`test/test_dify_plugin_unit.py`) stub the Dify SDK, so the SDK is not a project dependency. `manifest.yaml` `version` is the plugin version; `meta.version` is the manifest format version and stays.
 
 ## Release
 

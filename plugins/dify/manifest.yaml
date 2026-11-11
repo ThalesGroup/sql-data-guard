@@ -1,6 +1,6 @@
 name: sql_data_guard
 author: imperva
-version: "0.0.2"
+version: "0.0.3"
 sdk_version: "0.7.0"
 type: plugin
 label:

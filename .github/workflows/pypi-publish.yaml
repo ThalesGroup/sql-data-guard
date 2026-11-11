@@ -37,6 +37,7 @@ jobs:
         REPO_URL="https://raw.githubusercontent.com/${{ github.repository }}/main"
         sed -i "s|sql-data-guard-logo.png|${REPO_URL}/sql-data-guard-logo.png|g" README.md
         sed -i "s|(manual.md)|(${REPO_URL}/docs/manual.md)|g" README.md
+        sed -i "s|(docs/|(${REPO_URL}/docs/|g" README.md
         sed -i "s|(CONTRIBUTING.md)|(${REPO_URL}/CONTRIBUTING.md)|g" README.md
         sed -i "s|(LICENSE.md)|(${REPO_URL}/LICENSE.md)|g" README.md
 
