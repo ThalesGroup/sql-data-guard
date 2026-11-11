@@ -99,7 +99,8 @@ jobs:
       - name: Install tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy -r requirements.txt
+          # sqlglot's type hierarchy changes between releases, so type-check against the oldest supported one
+          pip install ruff mypy -r requirements.txt "sqlglot==25.20.1"
 
       - name: Ruff
         run: ruff check src test

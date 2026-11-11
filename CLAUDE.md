@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-sql-data-guard is a safety layer for LLM-generated SQL. `verify_sql(sql, config, dialect)` (in `src/sql_data_guard/sql_data_guard.py`) parses a query with **sqlglot**, checks it against a JSON config of allowed tables/columns/row restrictions, and returns `{allowed, errors, fixed, risk}`. `fixed` is a rewritten query when the problems are fixable (disallowed SELECT columns dropped, `*` expanded, static conditions like `1=1` removed, missing restriction predicates injected). The only runtime dependency is `sqlglot`.
+sql-data-guard is a safety layer for LLM-generated SQL. `verify_sql(sql, config, dialect)` (in `src/sql_data_guard/sql_data_guard.py`) parses a query with **sqlglot**, checks it against a JSON config of allowed tables/columns/row restrictions, and returns `{allowed, errors, fixed, risk}`. `fixed` is a rewritten query when the problems are fixable (disallowed SELECT columns dropped, `*` expanded, static conditions like `1=1` removed, missing restriction predicates injected). The only runtime dependency is `sqlglot`, bounded in `pyproject.toml`/`requirements.txt`; CI tests the oldest and newest allowed version, so check both when touching parsing code.
 
 ## Commands
 
@@ -20,7 +20,7 @@ PYTHONPATH=src python -m pytest test/test_sql_guard_unit.py -k "test_name"
 
 - Test files are named `*_unit.py` (not `test_*.py` only), so pass them explicitly or by glob. `test_sql_guard_llm.py` needs AWS Bedrock credentials and is manual-only.
 - Tests import `conftest.verify_sql_test`, which asserts exact `errors`, `fixed`, `risk` and can execute the (fixed) SQL against a sqlite/duckdb connection.
-- No linter or formatter is configured. Versions come from git tags (`pyproject.toml` has a placeholder version patched by the publish workflow).
+- Lint/types (CI runs both): `ruff check src test` and `mypy` (type-check with the oldest supported sqlglot, `pip install sqlglot==25.20.1`: newer releases change the type hierarchy). Coverage: add `--cov` to the pytest command (minimum 90%). Versions come from git tags (`pyproject.toml` has a placeholder version patched by the publish workflow).
 - Work happens directly on the `dev` branch; `main` is the release branch.
 
 ## Architecture

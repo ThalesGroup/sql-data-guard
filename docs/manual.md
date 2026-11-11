@@ -1,81 +1,108 @@
-### **Restriction Schema and Validation**
+# sql-data-guard manual
 
-Restrictions are utilized to validate queries by ensuring that only supported operations are applied to the columns of tables.
-The restrictions determine how values are compared against table columns in SQL queries. Below is a breakdown of how the restrictions are validated, the available operations, and the conditions under which they are applied.
+`verify_sql(sql, config, dialect=None)` checks one SQL query against a policy (the *configuration*) and returns whether it may run. When the problems it finds can be repaired, it also returns a rewritten query.
 
-#### **Supported Operations**
+```python
+from sql_data_guard import verify_sql
 
-The following operations are supported in the restriction schema:
+result = verify_sql("SELECT id FROM orders", config, dialect="postgres")
+if result["allowed"]:
+    run(sql)
+elif result["fixed"] is not None:
+    run(result["fixed"])        # the repaired query
+else:
+    ...                         # cannot be repaired: do not run anything
+```
 
-- **`=`**: Equal to – Checks if the column value is equal to a given value.
-- **`>`**: Greater than – Checks if the column value is greater than a specified value.
-- **`<`**: Less than – Checks if the column value is less than a given value.
-- **`>=`**: Greater than or equal to – Checks if the column value is greater than or equal to a specified value.
-- **`<=`**: Less than or equal to – Checks if the column value is less than or equal to a given value.
-- **`BETWEEN`**: Between two values – Validates if the column value is within a specified range.
-- **`IN`**: In a specified list of values – Validates if the column value matches any of the values in the given list.
+`verify_sql` never raises: an invalid configuration, input it cannot parse, or any unexpected internal error is returned as `allowed: false`.
 
-#### **Restriction Structure**
-Each restriction in the configuration consists of the following keys:
-- **`column`**: The name of the column the restriction is applied to (e.g., `"price"` or `"order_id"`).
-- **`value`** or **`values`**: The value(s) to compare the column against:
-  - If the operation is `BETWEEN`, the `values` field should contain a list of two numeric values, representing the lower and upper bounds of the range.
-  - For operations like `IN` or comparison operations (e.g., `=`, `>`, `<=`), the `value` or `values` field will contain one or more values to compare.
-- **`operation`**: The operation to apply to the column. This could be any of the supported operations, such as `BETWEEN`, `IN`, `=`, `>`, etc.
+## Result
 
-#### **Validation Rules for Specific Operations**
+| Key | Meaning |
+|-----|---------|
+| `allowed` | `true` only if the query can run exactly as given. |
+| `errors` | Sorted list of problems found (empty if allowed). |
+| `fixed` | A repaired query, or `null` when there was nothing to fix **or** the query cannot be repaired. If `allowed` is `false` and `fixed` is `null`, do not run the query. |
+| `risk` | Number from 0 (no risk) to 1 (high risk): the average of the risk of each problem found. |
 
-1. **BETWEEN**:
-   - The `BETWEEN` operation requires the `values` field to contain a list of exactly two numeric values. The first value must be less than the second.
-   - **Example**: 
-     ```
-     "operation" : "BETWEEN", 
-     "values": [100, 200]
-     ```
-   - In this case, the `price` column must have a value between 100 and 200.
+A repaired query has been verified to comply with the policy: for example a disallowed column is dropped from `SELECT`, `SELECT *` is expanded to the allowed columns, an always-true condition such as `OR 1 = 1` is removed, and a missing row restriction is added to `WHERE`.
 
-2. **IN**:
-   - The `IN` operation requires the `values` field to be a list containing multiple values to match the column against. The values can be of types such as integers, floats, or strings.
-   - **Example**:
-     ```
-     "operation": "IN", 
-     "values": [100, 200, 300]
-     ```
-   - In this case, the `category` column will be checked to see if its value matches one of the values in the list: 100, 200, or 300.
+## Configuration
 
-3. **Comparison Operations (>=, <=, =, <, >)**:
-   - These operations apply a comparison between the column and a single value. The value must be numeric for comparison operations like `>=`, `<`, etc.
-   - **Example**: 
-        ```
-     "operation": ">=", 
-     "value": 100
-     ```
-   - In this case, the `price` column must have a value greater than or equal to 100.
+```json
+{
+  "tables": [
+    {
+      "table_name": "orders",
+      "database_name": "orders_db",
+      "columns": ["id", "product_name", "account_id"],
+      "restrictions": [
+        {"column": "account_id", "value": 123}
+      ]
+    }
+  ],
+  "max_length": 10000,
+  "blocked_functions": ["my_dangerous_udf"]
+}
+```
 
-#### **Error Handling and Restrictions**
+| Key | Required | Description |
+|-----|----------|-------------|
+| `tables` | yes | Non-empty list of the tables the query may read. Any other table is rejected. A table must be listed only once. |
+| `tables[].table_name` | yes | Table name. |
+| `tables[].database_name` | no | Database/schema of the table. When set, a query that qualifies the table (`other_db.orders`) must use this name. |
+| `tables[].columns` | yes | Non-empty list of allowed columns. See [What is checked](#what-is-checked). |
+| `tables[].restrictions` | no | Row restrictions that must hold on every query of this table (see below). |
+| `max_length` | no | Maximum SQL length in characters (default 10,000). Longer queries are rejected. |
+| `blocked_functions` | no | Extra function names to reject, added to the built-in list. |
 
-The validation function checks that the restrictions adhere to the following rules and raises errors if any of these conditions are violated:
+### Identifier case
 
-1. **Unsupported Operations**:
-   - If an unsupported operation is used in the configuration, an `UnsupportedRestrictionError` is raised. Only operations listed in the "Supported Operations" section are allowed.
+Unquoted table and column names are matched case-insensitively (`FROM ORDERS` matches `orders`), as in SQL. A quoted identifier must match the configuration exactly, so `"Orders"` is a different table than `orders`.
 
-2. **Missing Columns or Tables**:
-   - If a table in the configuration is missing either the `columns` or `table_name` fields, or if no tables are provided in the configuration, a `ValueError` is raised. Every table must specify these fields.
+## Restrictions
 
-3. **Invalid Data Types**:
-   - If the `value` or `values` in the restriction do not match the expected data types (e.g., using non-numeric values for comparison operations), a `ValueError` will be raised.
- For example:
-   - A `BETWEEN` operation that doesn’t provide a list of two numeric values will trigger an error:
-     ```
-     "operation": "BETWEEN", 
-     "values": ["A", "B"]
-     ```
-     This would raise an error because the values are not numeric.
+A restriction forces a condition on the rows a query can read. If the query's `WHERE` clause does not contain it (as a top-level `AND` condition), the query is repaired by adding it:
 
-4. **Invalid `IN` Format**:
-   - If the `IN` operation is provided with invalid data types (e.g., a list with mixed types like numbers and strings), it will also result in a validation error:
-     ```
-     "operation": "IN", 
-     "values": [100, "Electronics"]
-     ```
-     This would raise an error because the values are not consistently of the same data type.
+```text
+SELECT id FROM orders              ->  SELECT id FROM orders WHERE account_id = 123
+SELECT id FROM orders WHERE x = 1  ->  SELECT id FROM orders WHERE (x = 1) AND account_id = 123
+```
+
+A restriction that is only present inside an `OR`, a `NOT`, or only in a nested query or CTE does **not** count: it has to hold for the table in the query that reads it.
+
+Each restriction has a `column`, a `value` or `values`, and an optional `operation`:
+
+| Operation | Config | A query satisfies it when its `WHERE` has |
+|-----------|--------|-------------------------------------------|
+| `=` (default) | `"value": 123` or `"values": [1, 2]` | `col = 123`, or `col IN (...)` using only allowed values |
+| `IN` | `"values": ["eu", "us"]` | `col IN (...)` / `col = ...` using only values from the list. A non-empty list of numbers or strings. |
+| `BETWEEN` | `"values": [100, 200]` | `col BETWEEN a AND b` inside the range. Two numbers, the first lower than the second. |
+| `>`, `>=`, `<`, `<=` | `"value": 100` | A comparison of the same kind whose value is at least as strict. `value` must be a number. |
+
+Comparisons are numeric (`9 > 10` is false). String values in the configuration are escaped for the dialect when a condition is added.
+
+### Invalid configuration
+
+An unsupported `operation`, a malformed `BETWEEN`/`IN`, a missing `table_name`/`columns`, an empty `tables` list, or a duplicated table makes `verify_sql` return `allowed: false` with a message explaining the problem (the validation itself is `restriction_validation.validate_restrictions`, which raises `UnsupportedRestrictionError` / `ValueError`).
+
+## What is checked
+
+- **One statement, read-only.** Only a single `SELECT` (including `UNION`/`INTERSECT`/`EXCEPT` and `WITH`) is allowed. Multiple statements, `INSERT`/`UPDATE`/`DELETE`/DDL, commands (`PRAGMA`, `SET`, `COPY`, `ATTACH` ...), `SELECT ... INTO`, locking clauses (`FOR UPDATE`) and data-modifying CTEs are rejected.
+- **Tables.** Every table in `FROM`/`JOIN`, in every nested query, must be in `tables`. A CTE name can be used as a table only inside the query that defines it; it never makes a real table of the same name usable.
+- **Columns, in every clause.** Columns in `SELECT`, `WHERE`, `JOIN ... ON`/`USING`, `GROUP BY`, `HAVING`, `ORDER BY` and window clauses must be allowed for their table. A disallowed column in `SELECT` is removed (a fixable error); anywhere else the query is rejected, because removing it would change the meaning of the query. Columns of derived tables and CTEs are checked where they come from.
+- **Row restrictions** for each table, in each query that reads it (see above).
+- **Always-true conditions** (`OR 1 = 1`, `OR 'a' = 'a'`) are removed.
+- **Functions.** Calls to functions that read files, run commands, sleep, reach other servers, exhaust memory, or expose server details are rejected. The built-in list covers common cases (for example `pg_read_file`, `load_extension`, `pg_sleep`, `sleep`, `lo_import`, `dblink`, `set_config`, `getenv`, `read_csv`, `version`, `randomblob`, `UTL_*`/`DBMS_*` packages, `@@` system variables); add more with `blocked_functions`. This is a deny-list: for a database you do not fully trust the callers of, also use database permissions.
+- **Limits.** `max_length` characters; any other unexpected problem is reported as `allowed: false`.
+
+## Dialects
+
+`dialect` is passed to [sqlglot](https://github.com/tobymao/sqlglot) for parsing and for generating the repaired query (`"sqlite"`, `"postgres"`, `"mysql"`, `"duckdb"`, `"trino"`, `"tsql"`, ...). Pass the dialect of the database that will run the query: the query is verified as parsed with that dialect, so a different dialect can interpret it differently.
+
+## Scope and limits
+
+- sql-data-guard verifies a query; it does not run it and does not replace database permissions. Use it as an extra layer, especially for row- and column-level rules the database cannot express.
+- The configuration is trusted input. The REST service takes the configuration from the request, so it is not an enforcement point for untrusted callers.
+- Unknown or unusual SQL fails closed: if the query cannot be verified, it is not allowed.
+- Report vulnerabilities as described in [SECURITY.md](../SECURITY.md).

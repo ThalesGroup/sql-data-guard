@@ -8,7 +8,7 @@
 SQL is the go-to language for performing queries on databases, and for a good reason - it’s well known, easy to use and pretty simple. However, it seems that it’s as easy to use as it is to exploit, and SQL injection is still one of the most targeted vulnerabilities - especially nowadays with the proliferation of “natural language queries” harnessing Large Language Models (LLMs) power to generate and run SQL queries.
 
 
-To help solve this problem, we developed sql-data-guard, an open-source project designed to verify that SQL queries access only the data they are allowed to. It takes a query and a restriction configuration, and returns whether the query is allowed to run or not. Additionally, it can modify the query to ensure it complies with the restrictions. sql-data-guard has also a built-in module for detection of malicious payloads, allowing it to report on and remove malicious expressions before query execution.
+To help solve this problem, we developed sql-data-guard, an open-source project designed to verify that SQL queries access only the data they are allowed to. It takes a query and a restriction configuration, and returns whether the query is allowed to run or not. Additionally, it can modify the query to ensure it complies with the restrictions. sql-data-guard also detects "always-true" (static) expressions such as `OR 1 = 1`, a common injection payload, and removes them before query execution.
 
 
 sql-data-guard is particularly useful when constructing SQL queries with LLMs, as such queries can’t run as prepared statements. Prepared statements secure a query’s structure, but LLM-generated queries are dynamic and lack this fixed form, increasing SQL injection risk. sql-data-guard mitigates this by inspecting and validating the query's content.
@@ -21,14 +21,14 @@ Connecting LLMs to SQL databases without strict controls can risk accidental dat
 
 ## Why Use sql-data-guard?
 
-Consider using sql-guard if your application constructs SQL queries, and you need to ensure that only permitted data is accessed. This is particularly beneficial if:
+Consider using sql-data-guard if your application constructs SQL queries, and you need to ensure that only permitted data is accessed. This is particularly beneficial if:
 - Your application generates complex SQL queries.
 - Your application employs LLM (Large Language Models) to create SQL queries, making it difficult to fully control the queries.
 - Different application users and roles should have different permissions, and you need to correlate an application user or role with fine-grained data access permission.
 - In multi-tenant applications, you need to ensure that each tenant can access only their data, which requires row-level security and often cannot be done using the database permissions model.
 
-sql-guard does not replace the database permissions model. Instead, it adds an extra layer of security, which is crucial when implementing fine-grained, column-level, and row-level security is challenging or impossible. 
-Data restrictions are often complex and cannot be expressed by the database permissions model. For instance, you may need to restrict access to specific columns or rows based on intricate business logic, which many database implementations do not support. Instead of relying on the database to enforce these restrictions, sql-guard helps you overcome vendor-specific limitations by verifying and modifying queries before they are executed.
+sql-data-guard does not replace the database permissions model. Instead, it adds an extra layer of security, which is crucial when implementing fine-grained, column-level, and row-level security is challenging or impossible. 
+Data restrictions are often complex and cannot be expressed by the database permissions model. For instance, you may need to restrict access to specific columns or rows based on intricate business logic, which many database implementations do not support. Instead of relying on the database to enforce these restrictions, sql-data-guard helps you overcome vendor-specific limitations by verifying and modifying queries before they are executed.
 
 ## How It Works
 
@@ -64,23 +64,32 @@ Output:
 ```json
 {
     "allowed": false,
-    "errors": ["Column name not allowed. Column removed from SELECT clause", 
-      "Always-True expression is not allowed", "Missing restriction for table: orders column: account_id value: 123"],
-    "fixed": "SELECT id, product_name, account_id FROM orders WHERE account_id = 123"
+    "errors": [
+        "Column name is not allowed. Column removed from SELECT clause",
+        "Missing restriction for table: orders column: account_id value: 123",
+        "Static expression is not allowed: 1 = 1"
+    ],
+    "fixed": "SELECT id FROM orders WHERE account_id = 123",
+    "risk": 0.53
 }
 ```
+`errors` is a sorted list. `risk` is between 0 (no risk) and 1 (high risk).
 For more details on restriction rules and validation, see the [manual.](docs/manual.md)
 
 
 Here is a table with more examples of SQL queries and their corresponding JSON outputs:
 
-| SQL Query                                               | JSON Output                                                                                                                                                                         |
-|---------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| SELECT id, product_name FROM orders WHERE account_id = 123 | { "allowed": true, "errors": [], "fixed": null }                                                                                                                                    |
-| SELECT id FROM orders WHERE account_id = 456            | { "allowed": false, "errors": ["Missing restriction for table: orders column: account_id value: 123"], "fixed": "SELECT id FROM orders WHERE account_id = 456 AND account_id = 123" } |
-| SELECT id, col FROM orders WHERE account_id = 123      | { "allowed": false, "errors": ["Column col is not allowed. Column removed from SELECT clause"], "fixed": "SELECT id FROM orders WHERE account_id = 123" } ```               |
-| SELECT id FROM orders WHERE account_id = 123 OR 1 = 1 | { "allowed": false, "errors": ["Always-True expression is not allowed"], "fixed": "SELECT id FROM orders WHERE account_id = 123" }                                                  |
-|SELECT * FROM orders WHERE account_id = 123| {"allowed": false, "errors": ["SELECT * is not allowed"], "fixed": "SELECT id, product_name, account_id FROM orders WHERE account_id = 123"}                                |
+| SQL Query | JSON Output |
+|-----------|-------------|
+| `SELECT id, product_name FROM orders WHERE account_id = 123` | `{ "allowed": true, "errors": [], "fixed": null, "risk": 0 }` |
+| `SELECT id FROM orders WHERE account_id = 456` | `{ "allowed": false, "errors": ["Missing restriction for table: orders column: account_id value: 123"], "fixed": "SELECT id FROM orders WHERE (account_id = 456) AND account_id = 123", "risk": 0.5 }` |
+| `SELECT id, col FROM orders WHERE account_id = 123` | `{ "allowed": false, "errors": ["Column col is not allowed. Column removed from SELECT clause"], "fixed": "SELECT id FROM orders WHERE account_id = 123", "risk": 0.3 }` |
+| `SELECT id FROM orders WHERE account_id = 123 OR 1 = 1` | `{ "allowed": false, "errors": ["Static expression is not allowed: 1 = 1"], "fixed": "SELECT id FROM orders WHERE account_id = 123", "risk": 0.8 }` |
+| `SELECT * FROM orders WHERE account_id = 123` | `{ "allowed": false, "errors": ["SELECT * is not allowed"], "fixed": "SELECT id, product_name, account_id FROM orders WHERE account_id = 123", "risk": 0.1 }` |
+| `SELECT id FROM orders WHERE account_id = 123 AND secret = 1` | `{ "allowed": false, "errors": ["Column secret is not allowed"], "fixed": null, "risk": 0.8 }` |
+| `SELECT id FROM orders WHERE account_id = 123; DROP TABLE orders` | `{ "allowed": false, "errors": ["Multiple statements are not allowed"], "fixed": null, "risk": 1.0 }` |
+
+When `fixed` is `null` the query cannot be repaired and must not be run.
 
 This table provides a variety of SQL queries and their corresponding JSON outputs, demonstrating how `sql-data-guard` handles different scenarios.
 

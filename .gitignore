@@ -7,3 +7,7 @@ do-not-commit/*
 dist/**
 **/*.egg-info/
 plugins/dify/*.difypkg
+.coverage
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

@@ -1,45 +1,26 @@
-Describe here all the security policies in place on this repository to help your contributors to handle security issues efficiently.
-
-## Goods practices to follow
-
-:warning:**You must never store credentials information into source code or config file in a GitHub repository**
-- Block sensitive data being pushed to GitHub by git-secrets or its likes as a git pre-commit hook
-- Audit for slipped secrets with dedicated tools
-- Use environment variables for secrets in CI/CD (e.g. GitHub Secrets) and secret managers in production
-
 # Security Policy
 
-## Supported Versions
+## Reporting a vulnerability
 
-Use this section to tell people about which versions of your project are currently being supported with security updates.
+Please **do not open a public issue** for a security problem. Report it privately to
+security@opensource.thalesgroup.com, including the SQL query, the configuration and the dialect that reproduce it
+(a bypass is any query that `verify_sql` allows, or "fixes", but that still reads data the configuration does not permit).
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+## Supported versions
 
-## Reporting a Vulnerability
+Security fixes are made on the latest release. Older releases are not patched; please upgrade.
 
-Use this section to tell people how to report a vulnerability.
-Tell them where to go, how often they can expect to get an update on a reported vulnerability, what to expect if the vulnerability is accepted or declined, etc.
+## What sql-data-guard does and does not protect against
 
-You can ask for support by contacting security@opensource.thalesgroup.com
+- It checks a query against the configuration and can repair it. It does not run queries and does not replace database permissions: use it as an additional layer.
+- The configuration is trusted. The REST service and the MCP wrapper take or load the policy themselves; do not expose them to callers who should not be able to choose the policy, and do not expose the REST service without authentication.
+- Function blocking is a deny-list. Add functions of your database that read files, run commands or reach other systems to `blocked_functions`, and give the database account only the permissions it needs.
+- Results depend on how [sqlglot](https://github.com/tobymao/sqlglot) parses the query. Pass the dialect of the database that runs the query, and keep the supported sqlglot range from `pyproject.toml`.
 
-## Disclosure policy
+## Testing
 
-Define the procedure for what a reporter who finds a security issue needs to do in order to fully disclose the problem safely, including who to contact and how.
+`test/test_bypass_unit.py` holds adversarial scenarios that are executed against seeded data and fail if forbidden data comes back. New bypass attempts are welcome as pull requests.
 
-## Security Update policy
+## Good practices
 
-Define how you intend to update users about new security vulnerabilities as they are found.
-
-## Security related configuration
-
-Settings users should consider that would impact the security posture of deploying this project, such as HTTPS, authorization and many others.
-
-## Known security gaps & future enhancements
-
-Security improvements you haven’t gotten to yet.
-Inform users those security controls aren’t in place, and perhaps suggest they contribute an implementation
+**Never store credentials in source code or configuration files in the repository.** Use environment variables for secrets in CI/CD (for example GitHub Secrets) and a secret manager in production.

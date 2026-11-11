@@ -35,7 +35,21 @@ To run all the unit tests locally, use the following command:
 ```sh
 PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
 ```
-Unit tests also run automatically on every push using a dedicated workflow.
+Add `--cov --cov-report=term-missing` for coverage (minimum 90%). Unit tests, lint and type checks run automatically on every push.
+
+#### Lint and types
+```sh
+pip install ruff mypy
+ruff check src test
+mypy
+```
+CI type-checks against the oldest supported `sqlglot` (see `pyproject.toml`), because sqlglot's type hints change between releases.
+
+#### Security tests
+`test/test_bypass_unit.py` runs adversarial queries against seeded sqlite data and fails if forbidden data comes back. If you find a way around the guard, add the query there. If you cannot fix it yet, list it in the `_KNOWN_*` tables of that file as a strict `xfail` with a severity.
+
+#### sqlglot versions
+The library supports the `sqlglot` range in `pyproject.toml`. CI runs the tests on the oldest and the newest allowed version. To test another version locally: `pip install sqlglot==<version>`.
 
 ### Version publication
 
