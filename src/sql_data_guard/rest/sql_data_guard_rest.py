@@ -79,6 +79,9 @@ if __name__ == "__main__":
     host = os.environ.get("APP_HOST", "127.0.0.1")
     port = int(os.environ.get("APP_PORT", 5000))
     logging.info(f"Going to start the app. Host: {host} Port: {port}")
+    logging.warning(
+        "This is the Flask development server, for local use only. The Docker image runs gunicorn."
+    )
     if not os.environ.get("APP_API_TOKEN"):
         logging.warning("APP_API_TOKEN is not set: the service accepts unauthenticated requests")
     app.run(host=host, port=port)

@@ -43,7 +43,7 @@ Key semantics to keep in mind:
 - `test/test_bypass_unit.py` holds adversarial scenarios executed against seeded sqlite data (fails if forbidden data comes back). Add new bypass attempts there; list unfixed ones in its `_KNOWN_*` tables as strict xfails.
 
 Integrations built on the library:
-- `rest/sql_data_guard_rest.py` – Flask `POST /verify-sql`; the client supplies the policy config, so it is not an enforcement point for untrusted callers. Optional bearer token via `APP_API_TOKEN`. The `Dockerfile` copies this file from the repo but installs the **library from PyPI** (pinned to the released version by the workflow), so this file must keep working with older library releases (for example `errors` was a set up to 0.1.9).
+- `rest/sql_data_guard_rest.py` – Flask `POST /verify-sql`; the client supplies the policy config, so it is not an enforcement point for untrusted callers. Optional bearer token via `APP_API_TOKEN`. The image runs it with gunicorn (`rest/gunicorn.conf.py`); `python sql_data_guard_rest.py` is the Flask development server, for local use only. The `Dockerfile` copies this file from the repo but installs the **library from PyPI** (pinned to the released version by the workflow), so this file must keep working with older library releases (for example `errors` was a set up to 0.1.9).
 - `mcpwrapper/mcp_wrapper.py` – stdio proxy that runs a real MCP server in Docker, intercepts `tools/call`, and verifies/rewrites the SQL argument (`wrapper.Dockerfile`; examples in `examples/`).
 - `plugins/dify/` – Dify tool plugin wrapping `verify_sql`; pins a published `sql_data_guard` version, so library changes do not reach it until released.
 

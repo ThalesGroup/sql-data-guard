@@ -203,3 +203,38 @@ class TestRestAppWithOlderLibrary:
         result = app.test_client().post("/verify-sql", json={"sql": "SELECT 1", "config": {}})
         assert result.status_code == 200
         assert result.json["errors"] == ["a error", "b error"]
+
+
+class TestGunicornConfig:
+    """The Docker image runs the service with gunicorn, configured through the same variables."""
+
+    @staticmethod
+    def _load(monkeypatch, **env):
+        import os
+        import runpy
+
+        for key in ("APP_HOST", "APP_PORT", "WEB_CONCURRENCY", "APP_THREADS"):
+            monkeypatch.delenv(key, raising=False)
+        for key, value in env.items():
+            monkeypatch.setenv(key, value)
+        import sql_data_guard.rest as rest
+
+        path = os.path.join(os.path.dirname(rest.__file__), "gunicorn.conf.py")
+        return runpy.run_path(path)
+
+    def test_defaults(self, monkeypatch):
+        conf = self._load(monkeypatch)
+        assert conf["bind"] == "0.0.0.0:5000"
+        assert conf["workers"] == 2 and conf["threads"] == 4
+        assert conf["worker_class"] == "gthread"
+
+    def test_environment_overrides(self, monkeypatch):
+        conf = self._load(
+            monkeypatch, APP_HOST="127.0.0.1", APP_PORT="8080", WEB_CONCURRENCY="3", APP_THREADS="2"
+        )
+        assert conf["bind"] == "127.0.0.1:8080"
+        assert conf["workers"] == 3 and conf["threads"] == 2
+
+    def test_logs_go_to_the_container_output(self, monkeypatch):
+        conf = self._load(monkeypatch)
+        assert conf["accesslog"] == "-" and conf["errorlog"] == "-"

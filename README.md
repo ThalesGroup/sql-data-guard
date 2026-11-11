@@ -112,7 +112,7 @@ To run the sql-data-guard Docker container, use the following command:
 docker run -d --name sql-data-guard -p 5000:5000 ghcr.io/thalesgroup/sql-data-guard
 ```
 
-The image installs `sql-data-guard` from PyPI. Release images are tagged with the version (for example `0.1.10`) and `latest`, and contain exactly that release. It runs as a non-root user and listens on port 5000.
+The image runs the service with [gunicorn](https://gunicorn.org/) (2 worker processes with 4 threads each), not the Flask development server, and installs `sql-data-guard` from PyPI. Release images are tagged with the version (for example `0.1.10`) and `latest`, and contain exactly that release. It runs as a non-root user and listens on port 5000.
 
 Settings (environment variables):
 
@@ -122,6 +122,8 @@ Settings (environment variables):
 | `APP_PORT` | `5000` | Port to listen on. |
 | `APP_HOST` | `127.0.0.1` (`0.0.0.0` in the image) | Address to bind. |
 | `APP_MAX_REQUEST_BYTES` | `1000000` | Maximum request size. |
+| `WEB_CONCURRENCY` | `2` | gunicorn worker processes (image only). |
+| `APP_THREADS` | `4` | Threads per worker (image only). |
 
 The caller sends the policy (`config`) with every request, so the service is not an enforcement point against callers who must not be able to choose their own policy.
 
