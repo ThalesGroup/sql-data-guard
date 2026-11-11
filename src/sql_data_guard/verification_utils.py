@@ -18,6 +18,29 @@ def find_direct(exp: expr.Expression, exp_type: Type[expr.Expression]):
             yield child
 
 
+def names_equal(node: expr.Expression, config_name: str) -> bool:
+    """
+    Compares the name of a table/column node with a name from the configuration.
+
+    Unquoted identifiers are case-insensitive in SQL; quoted ones are case-sensitive in most
+    databases, so a quoted identifier must match the configuration exactly.
+    """
+    ident = node.this
+    if isinstance(ident, expr.Identifier) and ident.quoted:
+        return node.name == config_name
+    return node.name.lower() == str(config_name).lower()
+
+
+def same_name(a: str, b: str) -> bool:
+    """Case-insensitive comparison of two (already unquoted) qualifiers or aliases."""
+    return a.lower() == b.lower()
+
+
+def column_in(col: expr.Column, columns) -> bool:
+    """True if the column node is one of the configured column names."""
+    return any(names_equal(col, c) for c in columns)
+
+
 def table_matches(table: expr.Table, config_table: dict) -> bool:
     """
     Checks if a table reference in a query refers to a table in the configuration.
@@ -25,7 +48,7 @@ def table_matches(table: expr.Table, config_table: dict) -> bool:
     The table name must match. If the query qualifies the table with a schema/database
     and the configuration defines a database_name, they must match too.
     """
-    if table.name != config_table["table_name"]:
+    if not names_equal(table, config_table["table_name"]):
         return False
     database_name = config_table.get("database_name")
     if table.db and database_name:

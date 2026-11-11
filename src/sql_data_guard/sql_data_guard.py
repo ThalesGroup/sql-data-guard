@@ -12,6 +12,8 @@ from .verification_utils import (
     split_to_expressions,
     find_direct,
     table_matches,
+    column_in,
+    same_name,
     get_where,
     get_from,
 )
@@ -239,28 +241,57 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
 
 
 def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
-    if isinstance(query_statement, expr.Union):
-        _verify_query_statement(query_statement.left, context)
-        _verify_query_statement(query_statement.right, context)
-        return
-    if query_statement.args.get("into"):
-        context.add_error("SELECT INTO is not allowed", False, 0.9)
-    if query_statement.args.get("locks"):
-        context.add_error("Locking clauses (FOR UPDATE / FOR SHARE) are not allowed", False, 0.7)
+    context.push_cte_scope()
+    try:
+        _verify_ctes(query_statement, context)
+        if isinstance(query_statement, expr.Union):
+            _verify_query_statement(query_statement.left, context)
+            _verify_query_statement(query_statement.right, context)
+            return
+        if query_statement.args.get("into"):
+            context.add_error("SELECT INTO is not allowed", False, 0.9)
+        if query_statement.args.get("locks"):
+            context.add_error(
+                "Locking clauses (FOR UPDATE / FOR SHARE) are not allowed", False, 0.7
+            )
+        from_tables = _verify_from_tables(context, query_statement)
+        try:
+            if context.can_fix:
+                _verify_select_clause(context, query_statement, from_tables)
+                _verify_other_clauses_columns(context, query_statement, from_tables)
+                _verify_where_clause(context, query_statement, from_tables)
+                _verify_sub_queries(context, query_statement)
+        finally:
+            context.pop_sources()
+    finally:
+        context.pop_cte_scope()
+
+
+def _verify_ctes(query_statement: expr.Query, context: VerificationContext):
+    """Verifies the WITH clause of a query (a SELECT or a set operation) and scopes its names."""
+    with_clause = query_statement.args.get("with") or query_statement.args.get("with_")
+    recursive = bool(with_clause and with_clause.args.get("recursive"))
     for cte in query_statement.ctes:
-        context.cte_names.add(cte.alias_or_name)
+        name = cte.alias_or_name
+        if not isinstance(cte.this, expr.Query):
+            context.add_error(
+                f"{cte.this.key.upper()} statement is not allowed in a WITH clause", False, 0.9
+            )
+            continue
+        if recursive:
+            # only a recursive CTE can refer to itself; otherwise the name in its body is a real table.
+            # Its columns are the declared ones, or those of the anchor (left-most) SELECT, which is
+            # verified on its own, so this does not let the body authorize columns.
+            context.add_cte_name(name)
+            anchor = cte.this
+            while isinstance(anchor, expr.Union):
+                anchor = anchor.left
+            declared = {c.alias_or_name for c in cte.args["alias"].columns} if cte.args.get("alias") else set()
+            context.dynamic_tables[name] = declared or set(getattr(anchor, "named_selects", []))
         _verify_query_statement(cte.this, context)
+        context.add_cte_name(name)
         # registered only after the body is verified, so a body cannot authorize its own columns
         _add_table_alias(cte, context)
-    from_tables = _verify_from_tables(context, query_statement)
-    try:
-        if context.can_fix:
-            _verify_select_clause(context, query_statement, from_tables)
-            _verify_other_clauses_columns(context, query_statement, from_tables)
-            _verify_where_clause(context, query_statement, from_tables)
-            _verify_sub_queries(context, query_statement)
-    finally:
-        context.pop_sources()
 
 
 def _verify_from_tables(context, query_statement):
@@ -324,7 +355,7 @@ def _verify_select_clause_element(
         context.add_error("SELECT * is not allowed", True, 0.1)
         for t in from_tables:
             for config_t in context.config["tables"]:
-                if t.name == config_t["table_name"]:
+                if table_matches(t, config_t):
                     for c in config_t["columns"]:
                         e.parent.set(
                             "expressions", e.parent.expressions + [sqlglot.parse_one(c)]
@@ -367,27 +398,28 @@ def _verify_col(
         # A qualifier that names a table in this FROM clause is resolved strictly
         # against that table, even if a dynamic table shares the same name.
         for t in from_tables:
-            if t.alias_or_name == col.table and t.name not in context.cte_names:
+            if same_name(t.alias_or_name, col.table) and t.name not in context.cte_names:
                 if any(
-                    col.name in config_t["columns"]
+                    column_in(col, config_t["columns"])
                     for config_t in context.config["tables"]
-                    if config_t["table_name"] == t.name
+                    if table_matches(t, config_t)
                 ):
                     return True
                 return _reject_col(col, context, in_select)
     visible = context.visible_dynamic_tables
     if (
-        (col.table != "" and col.table in visible)
+        (col.table != "" and col.table.lower() in {n.lower() for n in visible})
         or (
             col.table == ""
-            and col.name in [c for t_cols in visible.values() for c in t_cols]
+            and col.name.lower()
+            in {c.lower() for t_cols in visible.values() for c in t_cols}
         )
         or (
             any(
-                col.name in config_t["columns"]
+                column_in(col, config_t["columns"])
                 for config_t in context.config["tables"]
                 for t in from_tables
-                if t.name == config_t["table_name"]
+                if table_matches(t, config_t)
             )
         )
     ):
@@ -433,7 +465,7 @@ def _verify_other_clauses_columns(
             # columns of nested queries are verified together with those queries
             if col.parent_select is not query_statement:
                 continue
-            if col.table == "" and col.name in select_aliases:
+            if col.table == "" and col.name.lower() in {a.lower() for a in select_aliases}:
                 continue
             _verify_col(col, from_tables, context, in_select=False)
 
@@ -449,7 +481,9 @@ def _verify_using_column(
     right = join.this
     if isinstance(right, expr.Table):
         configured = [c for c in context.config["tables"] if table_matches(right, c)]
-        if configured and not any(name in c["columns"] for c in configured):
+        if configured and not any(
+            column_in(expr.column(name), c["columns"]) for c in configured
+        ):
             _reject_col(expr.column(name), context, False)
             return
     _verify_col(expr.column(name), from_tables, context, in_select=False)

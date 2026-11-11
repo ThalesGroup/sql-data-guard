@@ -21,7 +21,7 @@ class VerificationContext:
         self._fixed = None
         self._config = config
         self._dynamic_tables: Dict[str, Set[str]] = {}
-        self._cte_names: Set[str] = set()
+        self._cte_scopes: List[Set[str]] = []
         self._source_scopes: List[Set[str]] = []
         self._dialect = dialect
         self._risk: List[float] = []
@@ -59,8 +59,21 @@ class VerificationContext:
 
     @property
     def cte_names(self) -> Set[str]:
-        """Names defined by WITH clauses (the only dynamic tables usable as a table reference)."""
-        return self._cte_names
+        """
+        Names of the CTEs visible from the query being verified (the only dynamic tables usable
+        as a table reference): those of its own WITH clause and of enclosing queries.
+        """
+        return set().union(*self._cte_scopes) if self._cte_scopes else set()
+
+    def push_cte_scope(self):
+        """Enter a query: its WITH clause names are visible only until pop_cte_scope()."""
+        self._cte_scopes.append(set())
+
+    def pop_cte_scope(self):
+        self._cte_scopes.pop()
+
+    def add_cte_name(self, name: str):
+        self._cte_scopes[-1].add(name)
 
     def push_sources(self, names: Set[str]):
         """Enter a query: names of the dynamic tables (CTE/subquery aliases) in its FROM/JOIN."""

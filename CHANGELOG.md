@@ -20,7 +20,12 @@
 - `verify_sql` fails closed: any unexpected error (deep nesting, malformed config, non-string SQL) returns a rejection instead of raising.
 - Duplicate table entries in the config are rejected instead of silently widening the allow-list.
 
+- CTE names are scoped to the query that defines them: a CTE in one subquery no longer makes a real table of the same name usable elsewhere, and a non-recursive CTE cannot read the real table it shadows.
+- CTE bodies on set operations (`WITH ... SELECT ... UNION ...`) are verified, and data-modifying CTEs (`WITH x AS (DELETE ...)`) are rejected explicitly.
+
 ### Fixed
+- Unquoted table and column names match the config case-insensitively (`FROM ORDERS`); quoted names must match exactly.
+- Recursive CTEs work again with scoped aliases.
 - `<`, `>`, `<=`, `>=` and `BETWEEN` restrictions compare numerically, and `BETWEEN` no longer crashes on non-numeric values.
 - Injected conditions use the configured comparison operator instead of always `=`.
 - `IN` restrictions accept any non-empty list of numbers or strings.

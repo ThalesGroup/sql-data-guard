@@ -4,7 +4,13 @@ import sqlglot
 import sqlglot.expressions as expr
 
 from .verification_context import VerificationContext
-from .verification_utils import split_to_expressions, get_where
+from .verification_utils import (
+    split_to_expressions,
+    get_where,
+    table_matches,
+    names_equal,
+    same_name,
+)
 
 
 def verify_restrictions(
@@ -18,7 +24,7 @@ def verify_restrictions(
     else:
         and_exps = list(split_to_expressions(where_clause.this, expr.And))
     for c_t in context.config["tables"]:
-        for from_t in [t for t in from_tables if t.name == c_t["table_name"]]:
+        for from_t in [t for t in from_tables if table_matches(t, c_t)]:
             for r in c_t.get("restrictions", []):
                 found = False
                 for sub_exp in and_exps:
@@ -28,7 +34,7 @@ def verify_restrictions(
                 if not found:
                     if from_t.alias:
                         t_prefix = f"{from_t.alias}."
-                    elif len([t for t in from_tables if t.name == from_t.name]) > 1:
+                    elif len([t for t in from_tables if same_name(t.name, from_t.name)]) > 1:
                         t_prefix = f"{from_t.name}."
                     else:
                         t_prefix = ""
@@ -132,12 +138,14 @@ def _verify_restriction(
     if isinstance(exp, expr.Paren):
         return _verify_restriction(restriction, from_table, exp.this)
 
-    if not isinstance(exp.this, expr.Column) or exp.this.name != restriction["column"]:
+    if not isinstance(exp.this, expr.Column) or not names_equal(
+        exp.this, restriction["column"]
+    ):
         return False
 
-    if exp.this.table and from_table.alias and exp.this.table != from_table.alias:
+    if exp.this.table and from_table.alias and not same_name(exp.this.table, from_table.alias):
         return False
-    if exp.this.table and not from_table.alias and exp.this.table != from_table.name:
+    if exp.this.table and not from_table.alias and not same_name(exp.this.table, from_table.name):
         return False
 
     values = _get_restriction_values(restriction)  # Get correct restriction values
