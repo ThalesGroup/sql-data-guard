@@ -458,7 +458,7 @@ class TestMaxLength:
 
     def test_sql_too_long(self, config_max_length):
         long_sql = (
-            "SELECT " + ", ".join([f"1" for _ in range(100)]) + " FROM test_table"
+            "SELECT " + ", ".join(["1" for _ in range(100)]) + " FROM test_table"
         )
         result = verify_sql(long_sql, config_max_length)
         assert result["allowed"] == False
@@ -466,7 +466,7 @@ class TestMaxLength:
 
     def test_default_max_length(self, config_default_max_length):
         long_sql = (
-            "SELECT " + ", ".join([f"1" for _ in range(10_000)]) + " FROM test_table"
+            "SELECT " + ", ".join(["1" for _ in range(10_000)]) + " FROM test_table"
         )
         result = verify_sql(long_sql, config_default_max_length)
         assert result["allowed"] == False

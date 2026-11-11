@@ -1,5 +1,5 @@
 name: Run Unit Tests
-on: [push, workflow_dispatch]
+on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -24,4 +24,85 @@ jobs:
       - name: Run unit tests
         run: |
           source .venv/bin/activate
-          PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
+          PYTHONPATH=src python -m pytest --color=yes --cov --cov-report=term-missing test/*_unit.py
+
+  # sqlglot changes how SQL is parsed between releases: run against the oldest supported
+  # version and the newest one allowed by requirements.txt
+  sqlglot-versions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        sqlglot: ["25.20.1", "latest"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r test/test.requirements.txt
+          if [ "${{ matrix.sqlglot }}" != "latest" ]; then
+            pip install "sqlglot==${{ matrix.sqlglot }}"
+          fi
+          pip list | grep -i sqlglot
+
+      - name: Run unit tests
+        run: PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
+
+  # Newest sqlglot, ignoring the upper bound: an early warning for the next release.
+  # Does not block merges.
+  sqlglot-next:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/test.requirements.txt
+          pip install --upgrade sqlglot
+          pip list | grep -i sqlglot
+
+      - name: Run unit tests
+        run: PYTHONPATH=src python -m pytest --color=yes test/*_unit.py
+
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy -r requirements.txt
+
+      - name: Ruff
+        run: ruff check src test
+
+      - name: Mypy
+        run: mypy

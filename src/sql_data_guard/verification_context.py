@@ -14,11 +14,11 @@ class VerificationContext:
         _dialect (str): The SQL dialect to use for parsing.
     """
 
-    def __init__(self, config: dict, dialect: str):
+    def __init__(self, config: dict, dialect: Optional[str]):
         super().__init__()
         self._can_fix = True
-        self._errors = set()
-        self._fixed = None
+        self._errors: Set[str] = set()
+        self._fixed: Optional[str] = None
         self._config = config
         self._dynamic_tables: Dict[str, Set[str]] = {}
         self._cte_scopes: List[Set[str]] = []
@@ -93,7 +93,7 @@ class VerificationContext:
         return {n: c for n, c in self._dynamic_tables.items() if n in names}
 
     @property
-    def dialect(self) -> str:
+    def dialect(self) -> Optional[str]:
         return self._dialect
 
     @property

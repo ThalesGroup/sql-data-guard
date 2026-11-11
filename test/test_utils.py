@@ -7,7 +7,6 @@ import logging
 import os
 import pprint
 import urllib.parse
-from http.client import HTTPSConnection
 from pathlib import Path
 from typing import Optional, List
 

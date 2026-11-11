@@ -31,6 +31,11 @@
 - `IN` restrictions accept any non-empty list of numbers or strings.
 - An invalid restriction config returns an error result instead of raising `ValueError`.
 
+### Changed
+- `sqlglot` is now bounded to `>=25.20.1,<31` (the range the test-suite passes on). CI tests the oldest and newest allowed versions, plus an informational job against the newest sqlglot ignoring the bound.
+- CI: full unit-suite on the Python 3.8-3.12 matrix and on pull requests, coverage (minimum 90%), ruff and mypy.
+- Release workflow retries the post-publish install instead of sleeping a fixed time, and also runs the bypass scenarios against the published package.
+
 ### Breaking changes
 - Queries that filter, join, group or order by columns outside the allow-list are now rejected.
 - `result["errors"]` is a sorted list instead of a set.

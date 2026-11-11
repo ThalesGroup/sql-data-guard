@@ -2,9 +2,11 @@ name: Python Compatibility Test
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches:
       - main
+      - dev
 
 jobs:
   test:
@@ -27,8 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r test/test.requirements.txt
-          pip install pytest
 
       - name: Run unit tests
         run: |
-          PYTHONPATH=src python -m pytest --color=yes test/test_sql_guard_unit.py
+          PYTHONPATH=src python -m pytest --color=yes test/*_unit.py

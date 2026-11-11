@@ -1,1 +1,1 @@
-sqlglot
+sqlglot>=25.20.1,<31

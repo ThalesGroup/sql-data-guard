@@ -1,8 +1,4 @@
-import json
-import os
 import sqlite3
-from sqlite3 import Connection
-from typing import Set, Generator
 import pytest
 from sql_data_guard import verify_sql
 from conftest import verify_sql_test

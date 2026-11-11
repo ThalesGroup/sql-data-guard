@@ -34,6 +34,6 @@ def _init_logging():
 if __name__ == "__main__":
     _init_logging()
     logging.getLogger("werkzeug").setLevel("WARNING")
-    port = os.environ.get("APP_PORT", 5000)
+    port = int(os.environ.get("APP_PORT", 5000))
     logging.info(f"Going to start the app. Port: {port}")
     app.run(host="0.0.0.0", port=port)

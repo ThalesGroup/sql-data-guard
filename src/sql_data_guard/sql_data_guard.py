@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 
 import sqlglot
 import sqlglot.expressions as expr
@@ -21,7 +21,7 @@ from .verification_utils import (
 _DEFAULT_MAX_LENGTH = 10_000
 
 
-def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
+def verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
     """
     Verifies an SQL query against a given configuration and optionally fixes it.
 
@@ -50,7 +50,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
         }
 
 
-def _verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
+def _verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
     if not isinstance(sql, str):
         return {
             "allowed": False,
@@ -110,7 +110,7 @@ def _verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
             _verify_query_statement(parsed, result)
         else:
             result.add_error("Could not find a query statement", False, 0.7)
-    if result.can_fix and len(result.errors) > 0:
+    if parsed is not None and result.can_fix and len(result.errors) > 0:
         result.fixed = parsed.sql(dialect=dialect)
     return {
         "allowed": len(result.errors) == 0,
@@ -356,10 +356,12 @@ def _verify_select_clause_element(
         for t in from_tables:
             for config_t in context.config["tables"]:
                 if table_matches(t, config_t):
+                    parent = e.parent
                     for c in config_t["columns"]:
-                        e.parent.set(
-                            "expressions", e.parent.expressions + [sqlglot.parse_one(c)]
-                        )
+                        if parent is not None:
+                            parent.set(
+                                "expressions", parent.expressions + [sqlglot.parse_one(c)]
+                            )
         return False
     elif isinstance(e, expr.Tuple):
         result = True
@@ -524,7 +526,7 @@ def _get_from_clause_tables(
 
 
 def _add_table_alias(
-    exp: expr.Expression, context: VerificationContext, sources: set = None
+    exp: expr.Expression, context: VerificationContext, sources: Optional[set] = None
 ):
     if sources is not None and not list(find_direct(exp, expr.TableAlias)):
         # derived table without an alias: still a source of columns for its query

@@ -58,9 +58,17 @@ jobs:
         python -m venv .venv
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        echo "Waiting for 180 seconds to make sure package is available"
-        sleep 180                              
-        pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ sql-data-guard==${{ env.VERSION }}
+        # the package can take a while to show up on the index: retry instead of a fixed sleep
+        installed=0
+        for attempt in $(seq 1 30); do
+          if pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ sql-data-guard==${{ env.VERSION }}; then
+            installed=1
+            break
+          fi
+          echo "Package not available yet (attempt $attempt/30), retrying in 20 seconds"
+          sleep 20
+        done
+        [ "$installed" = "1" ] || { echo "Package did not become available on TestPyPI"; exit 1; }
         pip install pytest
       shell: bash
 
@@ -69,7 +77,7 @@ jobs:
       # This specific unit test file only uses public methods from the package
       run: |
         source .venv/bin/activate        
-        python -m pytest --color=yes test/test_sql_guard_unit.py
+        python -m pytest --color=yes test/test_sql_guard_unit.py test/test_bypass_unit.py
 
     - name: Clear test PyPi virtual environment
       run: rm -rf .venv
@@ -100,9 +108,16 @@ jobs:
         python -m venv .venv
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        echo "Waiting for 300 seconds to make sure package is available"
-        sleep 300            
-        pip install --no-cache-dir sql-data-guard==${{ env.VERSION }}
+        installed=0
+        for attempt in $(seq 1 30); do
+          if pip install --no-cache-dir sql-data-guard==${{ env.VERSION }}; then
+            installed=1
+            break
+          fi
+          echo "Package not available yet (attempt $attempt/30), retrying in 20 seconds"
+          sleep 20
+        done
+        [ "$installed" = "1" ] || { echo "Package did not become available on PyPI"; exit 1; }
         pip install pytest
       shell: bash
 
@@ -111,4 +126,4 @@ jobs:
       # This specific unit test file only uses public methods from the package
       run: |
         source .venv/bin/activate        
-        python -m pytest --color=yes test/test_sql_guard_unit.py
+        python -m pytest --color=yes test/test_sql_guard_unit.py test/test_bypass_unit.py

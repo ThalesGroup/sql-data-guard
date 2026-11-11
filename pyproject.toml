@@ -11,10 +11,11 @@ extra-index-url = ["https://pypi.org/simple"]
 name = "sql-data-guard"
 version = "UPDATED-BY-WORKFLOW"
 dependencies = [
-    "sqlglot"
+    # lower bound: oldest version the test-suite passes on; upper bound: next untested major
+    "sqlglot>=25.20.1,<31"
 ]
 authors = [
-  { name="Imperva - Threat Reseach Infra", email="ww.dis.imperva.threat-research-infra@thalesgroup.com" },
+  { name="Imperva - Threat Research Infra", email="ww.dis.imperva.threat-research-infra@thalesgroup.com" },
 ]
 description = "Safety Layer for LLM Database Interactions"
 readme = "README.md"
@@ -28,3 +29,17 @@ license = {file = "LICENSE.md"}
 [project.urls]
 Homepage = "https://github.com/ThalesGroup/sql-data-guard"
 Issues = "https://github.com/ThalesGroup/sql-data-guard/issues"
+
+[tool.ruff.lint]
+select = ["F", "E9"]  # pyflakes + syntax errors
+
+[tool.mypy]
+files = ["src/sql_data_guard"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["sql_data_guard"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
