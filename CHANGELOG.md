@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `suggest_config(sql, config, dialect)` and `merge_config(config, delta)`: compute the table/column additions a rejected query needs, and apply them to a copy of the configuration (see the manual, "Suggesting configuration changes"). `suggest_config` returns `None` when widening the allow-list cannot make the query acceptable, and its result is verified with `verify_sql` before it is returned.
 - Column masking: `column_masks` per table (`redact` policy). A masked column is returned as a constant under its own name when selected directly, and rejected in every other use.
 - `allowed_functions` config option: allow-list mode for functions (deny-list and `blocked_functions` still win). `blocked_functions` and `allowed_functions` must be lists of non-empty strings.
 - `force_limit` config option: caps the rows returned by the outermost query (adds, clamps or replaces `LIMIT`, including `LIMIT ALL`/`NULL`/`-1`, expressions and `FETCH FIRST`).

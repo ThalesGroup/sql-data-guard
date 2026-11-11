@@ -53,7 +53,16 @@ def verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
         }
 
 
-def _verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
+def _verify_sql(
+    sql: str,
+    config: dict,
+    dialect: Optional[str] = None,
+    violations: Optional[List[dict]] = None,
+) -> dict:
+    """
+    The implementation of verify_sql. If a list is passed as `violations`, the table and column
+    allow-list violations found are appended to it (see VerificationContext.add_violation).
+    """
     if not isinstance(sql, str):
         return {
             "allowed": False,
@@ -122,6 +131,8 @@ def _verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
         _enforce_force_limit(parsed, result)
     if parsed is not None and result.can_fix and len(result.errors) > 0:
         result.fixed = parsed.sql(dialect=dialect)
+    if violations is not None:
+        violations.extend(result.violations)
     return {
         "allowed": len(result.errors) == 0,
         "errors": result.errors,
@@ -398,6 +409,9 @@ def _verify_from_tables(context, query_statement):
                 found = True
         if not found:
             context.add_error(f"Table {t.name} is not allowed", False, 1)
+            context.add_violation(
+                {"type": "table", "table_name": t.name, "database_name": t.db or None}
+            )
     return from_tables
 
 
@@ -530,7 +544,7 @@ def _verify_col(
                     if table_matches(t, config_t)
                 ):
                     return True
-                return _reject_col(col, context, in_select)
+                return _reject_col(col, context, in_select, table=matches[0])
     visible = context.visible_dynamic_tables
     if (
         (col.table != "" and col.table.lower() in {n.lower() for n in visible})
@@ -549,12 +563,48 @@ def _verify_col(
         )
     ):
         return True
-    return _reject_col(col, context, in_select)
+    return _reject_col(col, context, in_select, from_tables=from_tables)
+
+
+def _column_owner(
+    col: expr.Column,
+    context: VerificationContext,
+    table: Optional[expr.Table],
+    from_tables: Optional[List[expr.Table]],
+) -> Optional[expr.Table]:
+    """
+    The real table a column reference belongs to, or None if that cannot be told (an unknown
+    qualifier, or an unqualified column in a query over several tables).
+    """
+    if table is not None:
+        return table
+    scopes = context.table_scopes or [from_tables or []]
+    if col.table:
+        for scope in scopes:
+            for t in scope:
+                if same_name(t.alias_or_name, col.table) and t.name not in context.cte_names:
+                    return t
+        return None
+    real = [t for t in scopes[0] if t.db or t.name not in context.cte_names]
+    return real[0] if len(real) == 1 else None
 
 
 def _reject_col(
-    col: expr.Column, context: VerificationContext, in_select: bool
+    col: expr.Column,
+    context: VerificationContext,
+    in_select: bool,
+    table: Optional[expr.Table] = None,
+    from_tables: Optional[List[expr.Table]] = None,
 ) -> bool:
+    owner = _column_owner(col, context, table, from_tables)
+    context.add_violation(
+        {
+            "type": "column",
+            "column": col.name,
+            "table_name": owner.name if owner is not None else None,
+            "database_name": (owner.db or None) if owner is not None else None,
+        }
+    )
     if in_select:
         context.add_error(
             f"Column {col.name} is not allowed. Column removed from SELECT clause",
@@ -611,7 +661,7 @@ def _verify_using_column(
         if configured and not any(
             column_in(expr.column(name), c["columns"]) for c in configured
         ):
-            _reject_col(expr.column(name), context, False)
+            _reject_col(expr.column(name), context, False, table=right)
             return
     _verify_col(expr.column(name), from_tables, context, in_select=False)
     if find_mask(expr.column(name), context.table_scopes or [from_tables], context.config):

@@ -141,6 +141,34 @@ SELECT id FROM orders WHERE account_id = 123 LIMIT 100000   ->  ... LIMIT 100
 
 Anything that is not a plain positive integer is replaced too, because several databases treat it as "no limit": `LIMIT ALL`, `LIMIT NULL`, `LIMIT -1`, `LIMIT 5 + 1000000`, a sub-query as the limit, `FETCH FIRST n ROWS`. `UNION` queries are limited as a whole; sub-queries and CTEs are not changed (the cap is on the result returned to the caller). The change is reported as a fixable error, so the result has `allowed: false` and the capped query in `fixed`. `force_limit` must be a positive integer.
 
+## Suggesting configuration changes
+
+When a query is rejected because it uses a table or column the configuration does not allow, `suggest_config` tells you what would have to be added, and `merge_config` applies it. This lets a person review and approve exactly what a query needs, instead of editing the configuration by hand.
+
+```python
+from sql_data_guard import suggest_config, merge_config, verify_sql
+
+config = {"tables": [{"table_name": "orders", "columns": ["id", "total"]}]}
+sql = "SELECT emp_id, amount FROM salaries"
+
+delta = suggest_config(sql, config, "postgres")
+# {"tables": [{"table_name": "salaries", "columns": ["emp_id", "amount"]}]}
+
+new_config = merge_config(config, delta)      # a copy; `config` is not modified
+verify_sql(sql, new_config, "postgres")       # allowed
+```
+
+`suggest_config(sql, config, dialect=None)` returns:
+- `{"tables": [...]}` with only what is missing: new tables with the columns the query uses (in any clause, in sub-queries, CTEs and joins), and new columns for tables already configured. A table in a database/schema keeps its `database_name`.
+- `{"tables": []}` if the query needs nothing added.
+- `None` when adding to the allow-list cannot make the query acceptable. This is the case for anything that is not a plain read-only query (several statements, `INSERT`/`DROP`/..., `SELECT INTO`), a blocked function, a column that cannot be attributed to one table (an unqualified column over several tables), and a table the query uses without naming any of its columns (`SELECT *`, `COUNT(*)`), because a configured table must list its columns.
+
+The suggestion is checked before it is returned: `verify_sql` accepts the query with `merge_config(config, delta)`, and no table or column of the query is left outside the allow-list. Only `tables` and their `columns` are ever suggested; restrictions, masks, function lists and `force_limit` are never changed, and a rejection for one of those reasons gives `None`. `suggest_config` never raises.
+
+`merge_config(config, delta)` returns a copy of `config` with the delta added: columns are added to the table of the same name (and `database_name`), other tables are appended, and duplicates (compared case-insensitively) are skipped. A malformed delta, or one with keys other than `table_name`, `database_name` and `columns`, raises `ValueError`, so a delta that was edited by hand cannot add restrictions or other settings.
+
+Whether to apply a suggestion is a decision for a person: it widens what queries can read.
+
 ## What is checked
 
 - **One statement, read-only.** Only a single `SELECT` (including `UNION`/`INTERSECT`/`EXCEPT` and `WITH`) is allowed. Multiple statements, `INSERT`/`UPDATE`/`DELETE`/DDL, commands (`PRAGMA`, `SET`, `COPY`, `ATTACH` ...), `SELECT ... INTO`, locking clauses (`FOR UPDATE`) and data-modifying CTEs are rejected.

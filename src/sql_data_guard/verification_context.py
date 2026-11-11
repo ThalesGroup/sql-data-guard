@@ -26,6 +26,7 @@ class VerificationContext:
         self._table_scopes: List[list] = []
         self._dialect = dialect
         self._risk: List[float] = []
+        self._violations: List[dict] = []
 
     @property
     def can_fix(self) -> bool:
@@ -36,6 +37,18 @@ class VerificationContext:
         if not can_fix:
             self._can_fix = False
         self._risk.append(risk)
+
+    def add_violation(self, violation: dict):
+        """
+        Records a machine-readable allow-list violation (a table or column the configuration
+        does not allow), next to the human-readable error. Used to suggest configuration changes.
+        """
+        if violation not in self._violations:
+            self._violations.append(violation)
+
+    @property
+    def violations(self) -> List[dict]:
+        return list(self._violations)
 
     @property
     def errors(self) -> List[str]:

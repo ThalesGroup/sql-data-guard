@@ -32,6 +32,7 @@ The verification pipeline lives in `src/sql_data_guard/` and spans several modul
 - `restriction_verification.py` – checks that each configured restriction appears among the top-level AND conjuncts of WHERE and injects the missing ones. Comparisons are numeric.
 - `restriction_validation.py` – validates the config's restriction operations; raises `UnsupportedRestrictionError` / `ValueError`, which `verify_sql` turns into an error result.
 - `column_masking.py` – validation and lookup of per-table `column_masks`; the SELECT-clause code rewrites a directly selected masked column and rejects every other use of it.
+- `config_suggestion.py` – `suggest_config` / `merge_config`. The walk records structured table/column violations (`VerificationContext.add_violation`, collected through `_verify_sql(..., violations=[...])`); `suggest_config` loops verify → add what is missing → verify (new tables are seeded with a placeholder column, as a configured table must have columns) and finally re-verifies the merged config, returning `None` if the query is still rejected. It must never suggest anything beyond `tables`/`columns`.
 - `verification_utils.py` – `split_to_expressions`, `find_direct` (direct children only; prefer it over `find`, which searches nested subqueries too), and `table_matches` (name plus optional `database_name` match).
 
 Key semantics to keep in mind:
