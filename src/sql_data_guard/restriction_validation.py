@@ -12,6 +12,18 @@ def _validate_force_limit(config: dict):
         )
 
 
+def _validate_function_list(config: dict, key: str):
+    if key not in config:
+        return
+    names = config[key]
+    if not isinstance(names, list) or not all(
+        isinstance(n, str) and n.strip() for n in names
+    ):
+        raise ValueError(
+            f"Invalid '{key}'. Expected a list of function names. Received: {names!r}"
+        )
+
+
 def validate_restrictions(config: dict):
     """
     Validates the restrictions in the configuration to ensure only supported operations are used.
@@ -33,6 +45,8 @@ def validate_restrictions(config: dict):
         "IN",
     ]  # Allowed operations
     _validate_force_limit(config)
+    _validate_function_list(config, "blocked_functions")
+    _validate_function_list(config, "allowed_functions")
     # Ensure 'tables' exists in config and is not empty
     tables = config.get("tables", [])
     # Check if tables are empty

@@ -171,18 +171,61 @@ _DEFAULT_BLOCKED_FUNCTIONS = frozenset(
 _BLOCKED_FUNCTION_PREFIXES = ("utl_", "dbms_", "sys.", "xp_", "sp_")
 
 
+# sqlglot models these as functions, but they are syntax rather than calls to a named function
+_SYNTAX_FUNCTIONS = (expr.Case, expr.Cast, expr.TryCast, expr.Exists, expr.Array)
+
+
+def _is_syntax(func: expr.Func) -> bool:
+    # the WHEN branches of a CASE are If nodes; a stand-alone IF(a, b, c) is a real function
+    return isinstance(func, _SYNTAX_FUNCTIONS) or (
+        isinstance(func, expr.If) and isinstance(func.parent, expr.Case)
+    )
+
+
+def _function_names(func: expr.Func):
+    """
+    The names a function call can be listed under in the configuration.
+
+    Returns (display_name, names): `names` are lower case. For a call qualified with a schema or
+    package (`pkg.fn(...)`) they are the qualified names (`pkg.fn`), so an unknown schema cannot
+    borrow the permission of a bare name. sqlglot normalises names (SUBSTR -> SUBSTRING), so every
+    spelling registered for the node class is included; the display name is the one to put in the
+    configuration.
+    """
+    primary = (func.name if isinstance(func, expr.Anonymous) else func.sql_name()).lower()
+    names = {primary}
+    if not isinstance(func, expr.Anonymous):
+        names |= {n.lower() for n in type(func).sql_names()}
+    if isinstance(func.parent, expr.Dot) and func.parent.expression is func:
+        qualifier = func.parent.this.sql().lower()
+        return f"{qualifier}.{primary}", {f"{qualifier}.{n}" for n in names}
+    return primary, names
+
+
 def _verify_functions(query: expr.Expression, context: VerificationContext):
-    """Rejects calls to blocked functions (defaults plus config["blocked_functions"])."""
+    """
+    Rejects calls to blocked functions (built-in list plus config["blocked_functions"]) and, when
+    config["allowed_functions"] is set, to any function that is not in that list.
+    """
     blocked = _DEFAULT_BLOCKED_FUNCTIONS | {
-        f.lower() for f in context.config.get("blocked_functions", [])
+        f.lower() for f in context.config.get("blocked_functions") or []
     }
+    allowed_config = context.config.get("allowed_functions")
+    allowed = {f.lower() for f in allowed_config} if allowed_config is not None else None
     for func in query.find_all(expr.Func):
-        name = (func.name if isinstance(func, expr.Anonymous) else func.sql_name()).lower()
-        qualified = name
-        if isinstance(func.parent, expr.Dot) and func.parent.expression is func:
-            qualified = f"{func.parent.this.sql().lower()}.{name}"
-        if name in blocked or qualified.startswith(_BLOCKED_FUNCTION_PREFIXES):
-            context.add_error(f"Function {name} is not allowed", False, 0.9)
+        if _is_syntax(func):
+            continue
+        display, names = _function_names(func)
+        # a blocked function is blocked whatever schema it is called through
+        bare_names = {n.rsplit(".", 1)[-1] for n in names}
+        if bare_names & blocked or any(
+            n.startswith(_BLOCKED_FUNCTION_PREFIXES) for n in names
+        ):
+            context.add_error(f"Function {display} is not allowed", False, 0.9)
+        elif allowed is not None and not names & allowed:
+            context.add_error(
+                f"Function {display} is not in the allowed functions list", False, 0.9
+            )
     # system variables such as @@version
     for param in query.find_all(expr.SessionParameter, expr.Parameter):
         if param.sql().startswith("@@"):

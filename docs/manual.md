@@ -55,6 +55,7 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `tables[].restrictions` | no | Row restrictions that must hold on every query of this table (see below). |
 | `max_length` | no | Maximum SQL length in characters (default 10,000). Longer queries are rejected. |
 | `blocked_functions` | no | Extra function names to reject, added to the built-in list. |
+| `allowed_functions` | no | Allow-list mode: when present, only these functions may be called. See [Function policy](#function-policy). |
 | `force_limit` | no | Maximum number of rows the outermost query may return. See [Row limit](#row-limit). |
 
 ### Identifier case
@@ -87,6 +88,24 @@ Comparisons are numeric (`9 > 10` is false). String values in the configuration 
 
 An unsupported `operation`, a malformed `BETWEEN`/`IN`, a missing `table_name`/`columns`, an empty `tables` list, or a duplicated table makes `verify_sql` return `allowed: false` with a message explaining the problem (the validation itself is `restriction_validation.validate_restrictions`, which raises `UnsupportedRestrictionError` / `ValueError`).
 
+## Function policy
+
+Function names are compared case-insensitively. Three layers apply, and a deny always wins:
+
+1. A built-in deny-list (file access, command execution, sleeping, other servers, server details, `@@` variables).
+2. `blocked_functions`: extra names to reject.
+3. `allowed_functions` (optional): when present, **every** function call in the statement (including CTEs and sub-queries) must be in the list, so a function you did not think of is rejected by default. `"allowed_functions": []` allows no function at all.
+
+```json
+{"allowed_functions": ["count", "sum", "max", "upper", "round"]}
+```
+
+Notes:
+- sqlglot normalises some names (for example `DATE_TRUNC` is reported as `TIMESTAMP_TRUNC`), and how aliases such as `SUBSTR`/`SUBSTRING` are treated can differ between sqlglot versions. The rejection message prints the name to put in the list; when unsure, list both spellings.
+- A call qualified with a schema or package (`myschema.count(x)`) must be listed by its qualified name, so an unknown schema cannot use the permission of a bare name.
+- Syntax that is not a call to a named function (`CASE`, `CAST(...)`, `EXISTS (...)`, `ARRAY[...]`, operators) is never restricted. A stand-alone `IF(a, b, c)` is a function and must be listed.
+- Both lists must be lists of non-empty strings; anything else is a configuration error.
+
 ## Row limit
 
 With `"force_limit": 100` the outermost query can never return more than 100 rows: a missing `LIMIT` is added, a larger one is lowered, and `OFFSET` is kept.
@@ -105,7 +124,7 @@ Anything that is not a plain positive integer is replaced too, because several d
 - **Columns, in every clause.** Columns in `SELECT`, `WHERE`, `JOIN ... ON`/`USING`, `GROUP BY`, `HAVING`, `ORDER BY` and window clauses must be allowed for their table. A disallowed column in `SELECT` is removed (a fixable error); anywhere else the query is rejected, because removing it would change the meaning of the query. Columns of derived tables and CTEs are checked where they come from.
 - **Row restrictions** for each table, in each query that reads it (see above).
 - **Always-true conditions** (`OR 1 = 1`, `OR 'a' = 'a'`) are removed.
-- **Functions.** Calls to functions that read files, run commands, sleep, reach other servers, exhaust memory, or expose server details are rejected. The built-in list covers common cases (for example `pg_read_file`, `load_extension`, `pg_sleep`, `sleep`, `lo_import`, `dblink`, `set_config`, `getenv`, `read_csv`, `version`, `randomblob`, `UTL_*`/`DBMS_*` packages, `@@` system variables); add more with `blocked_functions`. This is a deny-list: for a database you do not fully trust the callers of, also use database permissions.
+- **Functions** (see [Function policy](#function-policy)). Calls to functions that read files, run commands, sleep, reach other servers, exhaust memory, or expose server details are rejected. The built-in list covers common cases (for example `pg_read_file`, `load_extension`, `pg_sleep`, `sleep`, `lo_import`, `dblink`, `set_config`, `getenv`, `read_csv`, `version`, `randomblob`, `UTL_*`/`DBMS_*` packages, `@@` system variables); add more with `blocked_functions`. This is a deny-list: for a database you do not fully trust the callers of, also use database permissions.
 - **Limits.** `max_length` characters; any other unexpected problem is reported as `allowed: false`.
 
 ## Dialects
