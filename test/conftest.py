@@ -1,29 +1,7 @@
-import sqlite3
 from sqlite3 import Connection
 from typing import Set
 
-import pytest
-
 from sql_data_guard import verify_sql
-
-
-# Features the executed test queries need that older SQLite builds (e.g. Ubuntu 22.04) lack:
-# (error message, first SQLite version that supports it)
-_OLD_SQLITE_LIMITATIONS = [
-    ("RIGHT and FULL OUTER JOINs are not currently supported", (3, 39, 0)),
-    ("no such function: CONCAT", (3, 44, 0)),
-]
-
-
-def _execute(cnn: Connection, sql: str) -> list:
-    """Runs sql; skips the test only when the installed SQLite is too old for the feature."""
-    try:
-        return cnn.execute(sql).fetchall()
-    except sqlite3.OperationalError as e:
-        for message, version in _OLD_SQLITE_LIMITATIONS:
-            if message in str(e) and sqlite3.sqlite_version_info < version:
-                pytest.skip(f"SQLite {sqlite3.sqlite_version} is older than {version}: {e}")
-        raise
 
 
 def verify_sql_test(
@@ -53,7 +31,7 @@ def verify_sql_test(
         assert result["fixed"] == fix
         sql_to_use = result["fixed"]
     if cnn and data is not None:
-        fetched_data = _execute(cnn, sql_to_use)
+        fetched_data = cnn.execute(sql_to_use).fetchall()
         if data is not None:
             assert fetched_data == [tuple(row) for row in data]
     return sql_to_use

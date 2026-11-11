@@ -83,7 +83,7 @@ def _leaked(cnn, sql: str):
     try:
         rows = cnn.execute(sql).fetchall()
     except (sqlite3.Error, ValueError):
-        # does not run on this engine (ValueError: older Pythons reject NUL bytes in a query)
+        # does not run on this engine (ValueError: the driver rejects a NUL byte in a query)
         return None  # nothing leaks
     for row in rows:
         for value in row:

@@ -46,7 +46,7 @@
 - Docs: `docs/manual.md` is now a full configuration and behavior reference, the README examples show real output (and no longer claim a payload-detection module), `SECURITY.md` and `CONTRIBUTING.md` describe the actual policy and workflow.
 - CI: lint/type-check pinned to the oldest supported sqlglot; the Python compatibility matrix runs on `ubuntu-22.04` (older Python builds are not available on `ubuntu-latest`); workflow file typo fixed (`python-compatibility-test.yaml`).
 
-- Tests that execute SQL on SQLite skip only when the installed SQLite is too old for the feature (`FULL/RIGHT JOIN` < 3.39, `CONCAT` < 3.44). The library logs through its own `sql_data_guard` logger instead of the root logger.
+- The library logs through its own `sql_data_guard` logger instead of the root logger.
 
 - REST service: bodies that are not JSON objects and wrongly typed fields return 400 instead of 500; optional bearer token (`APP_API_TOKEN`), request size limit, and it binds to `127.0.0.1` unless `APP_HOST` says otherwise (the Docker image sets `0.0.0.0`). An unknown or invalid `dialect` is rejected with a clear error instead of an internal one.
 - The REST Docker image runs gunicorn (`gthread` workers, `WEB_CONCURRENCY`/`APP_THREADS`) instead of the Flask development server. gunicorn is installed in the image only; the library's dependencies are unchanged.
