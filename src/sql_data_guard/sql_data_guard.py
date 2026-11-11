@@ -154,6 +154,7 @@ _DEFAULT_BLOCKED_FUNCTIONS = frozenset(
         "randomblob",
         "zeroblob",
         "version",
+        "current_version",  # sqlglot maps version()/sqlite_version() to this
         "current_setting",
         "sqlite_version",
         "sqlite_source_id",
