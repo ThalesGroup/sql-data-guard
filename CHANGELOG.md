@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `force_limit` config option: caps the rows returned by the outermost query (adds, clamps or replaces `LIMIT`, including `LIMIT ALL`/`NULL`/`-1`, expressions and `FETCH FIRST`).
+
 ### Security
 - Reject queries with more than one statement (`SELECT ...; DROP ...`) and empty input.
 - Columns used in WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY and QUALIFY are now checked against the allow-list.

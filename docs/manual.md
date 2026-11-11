@@ -55,6 +55,7 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `tables[].restrictions` | no | Row restrictions that must hold on every query of this table (see below). |
 | `max_length` | no | Maximum SQL length in characters (default 10,000). Longer queries are rejected. |
 | `blocked_functions` | no | Extra function names to reject, added to the built-in list. |
+| `force_limit` | no | Maximum number of rows the outermost query may return. See [Row limit](#row-limit). |
 
 ### Identifier case
 
@@ -85,6 +86,17 @@ Comparisons are numeric (`9 > 10` is false). String values in the configuration 
 ### Invalid configuration
 
 An unsupported `operation`, a malformed `BETWEEN`/`IN`, a missing `table_name`/`columns`, an empty `tables` list, or a duplicated table makes `verify_sql` return `allowed: false` with a message explaining the problem (the validation itself is `restriction_validation.validate_restrictions`, which raises `UnsupportedRestrictionError` / `ValueError`).
+
+## Row limit
+
+With `"force_limit": 100` the outermost query can never return more than 100 rows: a missing `LIMIT` is added, a larger one is lowered, and `OFFSET` is kept.
+
+```text
+SELECT id FROM orders WHERE account_id = 123                ->  ... LIMIT 100
+SELECT id FROM orders WHERE account_id = 123 LIMIT 100000   ->  ... LIMIT 100
+```
+
+Anything that is not a plain positive integer is replaced too, because several databases treat it as "no limit": `LIMIT ALL`, `LIMIT NULL`, `LIMIT -1`, `LIMIT 5 + 1000000`, a sub-query as the limit, `FETCH FIRST n ROWS`. `UNION` queries are limited as a whole; sub-queries and CTEs are not changed (the cap is on the result returned to the caller). The change is reported as a fixable error, so the result has `allowed: false` and the capped query in `fixed`. `force_limit` must be a positive integer.
 
 ## What is checked
 

@@ -2,6 +2,16 @@ class UnsupportedRestrictionError(Exception):
     pass
 
 
+def _validate_force_limit(config: dict):
+    if "force_limit" not in config:
+        return
+    limit = config["force_limit"]
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise ValueError(
+            f"Invalid 'force_limit'. Expected a positive integer. Received: {limit!r}"
+        )
+
+
 def validate_restrictions(config: dict):
     """
     Validates the restrictions in the configuration to ensure only supported operations are used.
@@ -22,6 +32,7 @@ def validate_restrictions(config: dict):
         "BETWEEN",
         "IN",
     ]  # Allowed operations
+    _validate_force_limit(config)
     # Ensure 'tables' exists in config and is not empty
     tables = config.get("tables", [])
     # Check if tables are empty

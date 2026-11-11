@@ -112,6 +112,8 @@ def _verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
             _verify_query_statement(parsed, result)
         else:
             result.add_error("Could not find a query statement", False, 0.7)
+    if isinstance(parsed, expr.Query) and result.can_fix:
+        _enforce_force_limit(parsed, result)
     if parsed is not None and result.can_fix and len(result.errors) > 0:
         result.fixed = parsed.sql(dialect=dialect)
     return {
@@ -185,6 +187,33 @@ def _verify_functions(query: expr.Expression, context: VerificationContext):
     for param in query.find_all(expr.SessionParameter, expr.Parameter):
         if param.sql().startswith("@@"):
             context.add_error(f"System variable {param.sql()} is not allowed", False, 0.7)
+
+
+def _literal_int(limit: Optional[expr.Expression]) -> Optional[int]:
+    """The row count of a plain `LIMIT <integer literal>`, else None (ALL, NULL, -1, expressions, FETCH ...)."""
+    if isinstance(limit, expr.Limit):
+        count = limit.expression
+        if isinstance(count, expr.Literal) and count.is_int:
+            return int(count.name)
+    return None
+
+
+def _enforce_force_limit(query: expr.Query, context: VerificationContext):
+    """
+    Caps the number of rows of the outermost query when the config sets `force_limit`.
+
+    No LIMIT is added, a larger one is clamped, and anything that is not a plain positive integer
+    literal (`LIMIT ALL`, `LIMIT NULL`, `LIMIT -1`, an expression, FETCH FIRST...) is replaced, as
+    several databases treat those as "no limit". Only the outermost query is changed. OFFSET is kept.
+    """
+    cap = context.config.get("force_limit")
+    if cap is None:
+        return
+    current = _literal_int(query.args.get("limit"))
+    if current is not None and current <= cap:
+        return
+    query.set("limit", expr.Limit(expression=expr.Literal.number(cap)))
+    context.add_error(f"Row limit enforced: LIMIT {cap}", True, 0.3)
 
 
 def _verify_where_clause(
