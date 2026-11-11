@@ -82,8 +82,9 @@ def _leaked(cnn, sql: str):
     """Runs sql on sqlite; returns the first forbidden marker found in the output."""
     try:
         rows = cnn.execute(sql).fetchall()
-    except sqlite3.Error:
-        return None  # does not run on this engine, nothing leaks
+    except (sqlite3.Error, ValueError):
+        # does not run on this engine (ValueError: older Pythons reject NUL bytes in a query)
+        return None  # nothing leaks
     for row in rows:
         for value in row:
             for marker in _FORBIDDEN_MARKERS:
