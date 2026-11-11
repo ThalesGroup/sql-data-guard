@@ -61,6 +61,11 @@ def _verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
             "fixed": None,
             "risk": 1.0,
         }
+    if dialect is not None:
+        try:
+            sqlglot.Dialect.get_or_raise(dialect)
+        except ValueError as e:
+            return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
     # Check if the config is empty or invalid (e.g., no 'tables' key)
     if not config or not isinstance(config, dict) or "tables" not in config:
         return {

@@ -47,6 +47,9 @@
 
 - Tests that execute SQL on SQLite skip only when the installed SQLite is too old for the feature (`FULL/RIGHT JOIN` < 3.39, `CONCAT` < 3.44). The library logs through its own `sql_data_guard` logger instead of the root logger.
 
+- REST service: bodies that are not JSON objects and wrongly typed fields return 400 instead of 500; optional bearer token (`APP_API_TOKEN`), request size limit, and it binds to `127.0.0.1` unless `APP_HOST` says otherwise (the Docker image sets `0.0.0.0`). An unknown or invalid `dialect` is rejected with a clear error instead of an internal one.
+- Docker images: built only after a successful PyPI release, from the released commit, pinned to the released library version, tagged with the version (they were tagged `main`/`latest`), and the REST image runs as a non-root user.
+
 ### Breaking changes
 - Queries that filter, join, group or order by columns outside the allow-list are now rejected.
 - `result["errors"]` is a sorted list instead of a set.

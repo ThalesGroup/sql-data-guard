@@ -233,3 +233,17 @@ class TestLogging:
         with caplog.at_level("DEBUG"):
             verify_sql(secret, CONFIG, "sqlite")
         assert "super-secret-literal" not in caplog.text
+
+
+class TestDialect:
+    @pytest.mark.parametrize("dialect", ["not-a-dialect", 5, ["sqlite"], "SQLite"])
+    def test_invalid_dialect_is_rejected_with_a_clear_error(self, dialect):
+        result = verify_sql("SELECT id FROM orders WHERE id = 123", CONFIG, dialect)
+        assert not result["allowed"] and result["fixed"] is None
+        assert "Internal error" not in result["errors"][0]
+        assert "ialect" in result["errors"][0]
+
+    @pytest.mark.parametrize("dialect", [None, "", "sqlite", "postgres", "tsql"])
+    def test_valid_dialect_names_still_work(self, dialect):
+        result = verify_sql("SELECT id FROM orders WHERE id = 123", CONFIG, dialect)
+        assert result["allowed"], result

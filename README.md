@@ -112,6 +112,23 @@ To run the sql-data-guard Docker container, use the following command:
 docker run -d --name sql-data-guard -p 5000:5000 ghcr.io/thalesgroup/sql-data-guard
 ```
 
+The image installs `sql-data-guard` from PyPI. Release images are tagged with the version (for example `0.1.10`) and `latest`, and contain exactly that release. It runs as a non-root user and listens on port 5000.
+
+Settings (environment variables):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `APP_API_TOKEN` | not set | When set, every request must send `Authorization: Bearer <token>`. **Set it unless the service is only reachable by trusted callers.** |
+| `APP_PORT` | `5000` | Port to listen on. |
+| `APP_HOST` | `127.0.0.1` (`0.0.0.0` in the image) | Address to bind. |
+| `APP_MAX_REQUEST_BYTES` | `1000000` | Maximum request size. |
+
+The caller sends the policy (`config`) with every request, so the service is not an enforcement point against callers who must not be able to choose their own policy.
+
+```bash
+docker run -d --name sql-data-guard -p 5000:5000 -e APP_API_TOKEN=change-me ghcr.io/thalesgroup/sql-data-guard
+```
+
 ### Calling the Docker Container Using REST API
 
 Once the `sql-data-guard` Docker container is running, you can interact with it using its REST API. Below is an example of how to verify an SQL query using `curl`:
@@ -119,6 +136,7 @@ Once the `sql-data-guard` Docker container is running, you can interact with it 
 ```bash
 curl -X POST http://localhost:5000/verify-sql \
      -H "Content-Type: application/json" \
+     -H "Authorization: Bearer change-me" \
      -d '{
            "sql": "SELECT * FROM orders WHERE account_id = 123",
            "config": {
