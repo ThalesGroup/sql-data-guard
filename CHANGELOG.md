@@ -53,6 +53,7 @@
 - Docker images: built only after a successful PyPI release, from the released commit, pinned to the released library version, tagged with the version (they were tagged `main`/`latest`), and the REST image runs as a non-root user.
 
 ### Breaking changes
+- Python 3.8 and 3.9 are no longer supported (`requires-python >=3.10`). Both are past end of life, and sqlglot 27+ already requires 3.9 or newer, so 3.8 users could not get a current parser. pip keeps installing the last compatible release for them. The CI matrix now covers Python 3.10-3.14.
 - Queries that filter, join, group or order by columns outside the allow-list are now rejected.
 - `result["errors"]` is a sorted list instead of a set.
 - `<`, `>` and `<=` restrictions require a numeric value (as `>=` already did).

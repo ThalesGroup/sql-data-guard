@@ -10,12 +10,11 @@ on:
 
 jobs:
   test:
-    # ubuntu-latest no longer provides the older Python builds (3.8, 3.9)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout repository
