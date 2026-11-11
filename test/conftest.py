@@ -15,9 +15,9 @@ def verify_sql_test(
 ) -> str:
     result = verify_sql(sql, config, dialect)
     if errors is None:
-        assert result["errors"] == set()
+        assert result["errors"] == []
     else:
-        expected_errors = list(errors)
+        expected_errors = sorted(errors)
         actual_errors = list(result["errors"])
         assert actual_errors == expected_errors
     if len(result["errors"]) > 0:

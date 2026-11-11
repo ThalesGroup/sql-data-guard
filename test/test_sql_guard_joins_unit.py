@@ -263,7 +263,7 @@ class TestJoins:
                 {
                     "table_name": "products1",
                     "database_name": "orders_db",
-                    "columns": ["id", "prod_name", "category"],
+                    "columns": ["id", "prod_name", "category", "access", "date"],
                     "restrictions": [{"column": "id", "value": 324}],
                 },
                 {
@@ -277,7 +277,7 @@ class TestJoins:
 
     def test_restriction_passed(self, config):
         res = verify_sql(
-            'SELECT id, prod_name from products1 where id = 324 and access = "granted" ',
+            "SELECT id, prod_name from products1 where id = 324 and access = 'granted' ",
             config,
         )
         assert res["allowed"] == True, res
@@ -289,7 +289,7 @@ class TestJoins:
     def test_inner_join_on_id(self, config):
         res = verify_sql(
             """SELECT id, prod_name FROM products1
-         INNER JOIN customers ON products1.id = customers.id 
+         INNER JOIN customers ON products1.id = customers.cust_id 
          WHERE (id = 324) AND access = 'restricted' """,
             config,
         )
@@ -298,7 +298,7 @@ class TestJoins:
     def test_full_outer_join(self, config):
         res = verify_sql(
             """SELECT id, prod_name from products1
-        FULL OUTER JOIN customers on products1.id = customers.id
+        FULL OUTER JOIN customers on products1.id = customers.cust_id
         where (id = 324) AND access = 'restricted' """,
             config,
         )
@@ -307,7 +307,7 @@ class TestJoins:
     def test_right_join(self, config):
         res = verify_sql(
             """SELECT id, prod_name FROM products1
-         RIGHT JOIN customers ON products1.id = customers.id 
+         RIGHT JOIN customers ON products1.id = customers.cust_id 
          WHERE ((id = 324)) AND access = 'restricted' """,
             config,
         )
@@ -316,7 +316,7 @@ class TestJoins:
     def test_left_join(self, config):
         res = verify_sql(
             """SELECT id, prod_name FROM products1
-                 LEFT JOIN customers ON products1.id = customers.id 
+                 LEFT JOIN customers ON products1.id = customers.cust_id 
                  WHERE ((id = 324)) AND access = 'restricted' """,
             config,
         )
@@ -337,7 +337,7 @@ class TestJoins:
     def test_inner_join_fail(self, config):
         res = verify_sql(
             """SELECT id, prod_name FROM products1
-         INNER JOIN customers ON products1.id = customers.id 
+         INNER JOIN customers ON products1.id = customers.cust_id 
          WHERE (id = 324) AND access = 'granted' """,
             config,
         )
@@ -350,7 +350,7 @@ class TestJoins:
     def test_full_outer_join_fail(self, config):
         res = verify_sql(
             """SELECT id, prod_name from products1
-        FULL OUTER JOIN customers on products1.id = customers.id
+        FULL OUTER JOIN customers on products1.id = customers.cust_id
         where (id = 324) AND access = 'pending' """,
             config,
         )
@@ -363,7 +363,7 @@ class TestJoins:
     def test_right_join_fail(self, config):
         res = verify_sql(
             """SELECT id, prod_name FROM products1
-         RIGHT JOIN customers ON products1.id = customers.id 
+         RIGHT JOIN customers ON products1.id = customers.cust_id 
          WHERE ((id = 324)) AND access = 'granted' """,
             config,
         )
@@ -376,7 +376,7 @@ class TestJoins:
     def test_left_join_fail(self, config):
         res = verify_sql(
             """SELECT id, prod_name FROM products1
-                 LEFT JOIN customers ON products1.id = customers.id 
+                 LEFT JOIN customers ON products1.id = customers.cust_id 
                  WHERE ((id = 324)) AND access = 'granted' """,
             config,
         )

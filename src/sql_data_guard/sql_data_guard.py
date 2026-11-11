@@ -8,7 +8,7 @@ from sqlglot.optimizer.simplify import simplify
 from .restriction_validation import validate_restrictions, UnsupportedRestrictionError
 from .restriction_verification import verify_restrictions
 from .verification_context import VerificationContext
-from .verification_utils import split_to_expressions, find_direct
+from .verification_utils import split_to_expressions, find_direct, table_matches
 
 _DEFAULT_MAX_LENGTH = 10_000
 
@@ -51,16 +51,24 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
     # First, validate restrictions
     try:
         validate_restrictions(config)
-    except UnsupportedRestrictionError as e:
+    except (UnsupportedRestrictionError, ValueError) as e:
         return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
 
     result = VerificationContext(config, dialect)
+    parsed = None
     try:
-        parsed = sqlglot.parse_one(sql, dialect=dialect)
-    except sqlglot.errors.ParseError as e:
-        logging.error(f"SQL: {sql}\nError parsing SQL: {e}")
+        statements = [s for s in sqlglot.parse(sql, dialect=dialect) if s is not None]
+    except sqlglot.errors.SqlglotError as e:
+        # Do not log the SQL itself: it may contain sensitive literals.
+        logging.error(f"Error parsing SQL ({type(e).__name__}, length {len(sql)})")
         result.add_error(f"Error parsing sql: {e}", False, 0.9)
-        parsed = None
+    else:
+        if len(statements) == 0:
+            result.add_error("Error parsing sql: no statement found", False, 0.9)
+        elif len(statements) > 1:
+            result.add_error("Multiple statements are not allowed", False, 1)
+        else:
+            parsed = statements[0]
     if parsed:
         if isinstance(parsed, expr.Command):
             result.add_error(f"{parsed.name} statement is not allowed", False, 0.9)
@@ -69,6 +77,7 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
                 f"{parsed.key.upper()} statement is not allowed", False, 0.9
             )
         elif isinstance(parsed, expr.Query):
+            _verify_functions(parsed, result)
             _verify_query_statement(parsed, result)
         else:
             result.add_error("Could not find a query statement", False, 0.7)
@@ -80,6 +89,52 @@ def verify_sql(sql: str, config: dict, dialect: str = None) -> dict:
         "fixed": result.fixed,
         "risk": result.risk,
     }
+
+
+# Functions that read files, run commands, sleep or otherwise reach outside the query.
+_DEFAULT_BLOCKED_FUNCTIONS = frozenset(
+    {
+        "pg_read_file",
+        "pg_read_binary_file",
+        "pg_ls_dir",
+        "pg_stat_file",
+        "pg_sleep",
+        "pg_sleep_for",
+        "pg_sleep_until",
+        "pg_terminate_backend",
+        "pg_cancel_backend",
+        "lo_import",
+        "lo_export",
+        "dblink",
+        "dblink_exec",
+        "load_extension",
+        "readfile",
+        "writefile",
+        "load_file",
+        "sleep",
+        "benchmark",
+        "xp_cmdshell",
+        "read_csv",
+        "read_csv_auto",
+        "read_parquet",
+        "read_json",
+        "read_json_auto",
+        "read_text",
+        "read_blob",
+        "glob",
+    }
+)
+
+
+def _verify_functions(query: expr.Expression, context: VerificationContext):
+    """Rejects calls to blocked functions (defaults plus config["blocked_functions"])."""
+    blocked = _DEFAULT_BLOCKED_FUNCTIONS | {
+        f.lower() for f in context.config.get("blocked_functions", [])
+    }
+    for func in query.find_all(expr.Func):
+        name = (func.name if isinstance(func, expr.Anonymous) else func.sql_name()).lower()
+        if name in blocked:
+            context.add_error(f"Function {name} is not allowed", False, 0.9)
 
 
 def _verify_where_clause(
@@ -144,10 +199,12 @@ def _verify_query_statement(query_statement: expr.Query, context: VerificationCo
         return
     for cte in query_statement.ctes:
         _add_table_alias(cte, context)
+        context.cte_names.add(cte.alias_or_name)
         _verify_query_statement(cte.this, context)
     from_tables = _verify_from_tables(context, query_statement)
     if context.can_fix:
         _verify_select_clause(context, query_statement, from_tables)
+        _verify_other_clauses_columns(context, query_statement, from_tables)
         _verify_where_clause(context, query_statement, from_tables)
         _verify_sub_queries(context, query_statement)
 
@@ -157,7 +214,11 @@ def _verify_from_tables(context, query_statement):
     for t in from_tables:
         found = False
         for config_t in context.config["tables"]:
-            if t.name == config_t["table_name"] or t.name in context.dynamic_tables:
+            # Only CTE names can be referenced as tables. Subquery aliases
+            # live in the same namespace for columns, not for table lookups.
+            if table_matches(t, config_t) or (
+                not t.db and t.name in context.cte_names
+            ):
                 found = True
         if not found:
             context.add_error(f"Table {t.name} is not allowed", False, 1)
@@ -221,7 +282,10 @@ def _verify_select_clause_element(
 
 
 def _verify_col(
-    col: expr.Column, from_tables: List[expr.Table], context: VerificationContext
+    col: expr.Column,
+    from_tables: List[expr.Table],
+    context: VerificationContext,
+    in_select: bool = True,
 ) -> bool:
     """
     Verifies if a column reference is allowed based on the provided tables and context.
@@ -234,10 +298,21 @@ def _verify_col(
     Returns:
         bool: True if the column reference is allowed, False otherwise.
     """
+    if col.table:
+        # A qualifier that names a table in this FROM clause is resolved strictly
+        # against that table, even if a dynamic table shares the same name.
+        for t in from_tables:
+            if t.alias_or_name == col.table and t.name not in context.cte_names:
+                if any(
+                    col.name in config_t["columns"]
+                    for config_t in context.config["tables"]
+                    if config_t["table_name"] == t.name
+                ):
+                    return True
+                return _reject_col(col, context, in_select)
     if (
-        col.table == "sub_select"
-        or (col.table != "" and col.table in context.dynamic_tables)
-        or (all(t.name in context.dynamic_tables for t in from_tables))
+        (col.table != "" and col.table in context.dynamic_tables)
+        or (all(t.name in context.cte_names for t in from_tables))
         or (
             col.table == ""
             and col.name
@@ -253,13 +328,47 @@ def _verify_col(
         )
     ):
         return True
-    else:
+    return _reject_col(col, context, in_select)
+
+
+def _reject_col(
+    col: expr.Column, context: VerificationContext, in_select: bool
+) -> bool:
+    if in_select:
         context.add_error(
             f"Column {col.name} is not allowed. Column removed from SELECT clause",
             True,
             0.3,
         )
-        return False
+    else:
+        # A disallowed column outside SELECT (WHERE, JOIN, GROUP BY...) cannot be
+        # safely removed, so the query is rejected.
+        context.add_error(f"Column {col.name} is not allowed", False, 0.8)
+    return False
+
+
+def _verify_other_clauses_columns(
+    context: VerificationContext,
+    query_statement: expr.Query,
+    from_tables: List[expr.Table],
+):
+    """Verifies columns used in WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY and QUALIFY."""
+    clauses = [
+        query_statement.args.get(k)
+        for k in ("where", "group", "having", "order", "qualify")
+    ]
+    clauses += [j.args.get("on") for j in query_statement.args.get("joins") or []]
+    select_aliases = {s.alias for s in query_statement.selects if s.alias}
+    for clause in clauses:
+        if clause is None:
+            continue
+        for col in clause.find_all(expr.Column):
+            # columns of nested queries are verified together with those queries
+            if col.parent_select is not query_statement:
+                continue
+            if col.table == "" and col.name in select_aliases:
+                continue
+            _verify_col(col, from_tables, context, in_select=False)
 
 
 def _get_from_clause_tables(

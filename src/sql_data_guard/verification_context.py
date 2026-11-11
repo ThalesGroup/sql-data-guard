@@ -21,6 +21,7 @@ class VerificationContext:
         self._fixed = None
         self._config = config
         self._dynamic_tables: Dict[str, Set[str]] = {}
+        self._cte_names: Set[str] = set()
         self._dialect = dialect
         self._risk: List[float] = []
 
@@ -35,8 +36,9 @@ class VerificationContext:
         self._risk.append(risk)
 
     @property
-    def errors(self) -> Set[str]:
-        return self._errors
+    def errors(self) -> List[str]:
+        """Errors found, sorted so that results are deterministic."""
+        return sorted(self._errors)
 
     @property
     def fixed(self) -> Optional[str]:
@@ -53,6 +55,11 @@ class VerificationContext:
     @property
     def dynamic_tables(self) -> Dict[str, Set[str]]:
         return self._dynamic_tables
+
+    @property
+    def cte_names(self) -> Set[str]:
+        """Names defined by WITH clauses (the only dynamic tables usable as a table reference)."""
+        return self._cte_names
 
     @property
     def dialect(self) -> str:

@@ -26,11 +26,11 @@
 {"name": "brackets_in_select_8", "sql": "SELECT ((id + 1) * 2) FROM orders WHERE id = 123", "errors": [], "data": [[248]]}
 {"name": "brackets_in_select_9", "sql": "SELECT (id + (id / 2.0)) FROM orders WHERE id = 123", "errors": [], "data": [[184.5]]}
 {"name": "brackets_in_select_10", "sql": "SELECT ((id - 1) / 2) FROM orders WHERE id = 123", "errors": [], "data": [[61]]}
-{"name": "mixed_case_and_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AnD status = 'shipped'", "errors": [], "data": [[123]]}
-{"name": "mixed_case_or_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AND (status = 'shipped' Or status = 'pending')", "errors": [], "data": [[123]]}
-{"name": "mixed_case_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE id = 123 oR status = 'pending'", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (id = 123 OR status = 'pending') AND id = 123", "data": [[123]]}
-{"name": "mixed_case_and_or_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AnD (status = 'shipped' Or status = 'pending')", "errors": [], "data": [[123]]}
-{"name": "mixed_case_and_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE (id = 123 Or id = 124) AnD status = 'shipped'", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE ((id = 123 OR id = 124) AND status = 'shipped') AND id = 123", "data": [[123]]}
+{"name": "mixed_case_and_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AnD account_id = 123", "errors": [], "data": [[123]]}
+{"name": "mixed_case_or_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AND (account_id = 123 Or account_id = 124)", "errors": [], "data": [[123]]}
+{"name": "mixed_case_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE id = 123 oR account_id = 124", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE (id = 123 OR account_id = 124) AND id = 123", "data": [[123]]}
+{"name": "mixed_case_and_or_operator_1", "sql": "SeLeCt id FrOm orders WhErE id = 123 AnD (account_id = 123 Or account_id = 124)", "errors": [], "data": [[123]]}
+{"name": "mixed_case_and_or_operator_2", "sql": "SeLeCt id FrOm orders WhErE (id = 123 Or id = 124) AnD account_id = 123", "errors": ["Missing restriction for table: orders column: id value: 123"], "fix": "SELECT id FROM orders WHERE ((id = 123 OR id = 124) AND account_id = 123) AND id = 123", "data": [[123]]}
 {"name": "single_line_comment_in_select", "sql": "SELECT id -- comment\nFROM orders WHERE id = 123", "errors": [], "data": [[123]]}
 {"name": "single_line_comment_in_where", "sql": "SELECT id FROM orders WHERE id = 123 -- comment", "errors": [], "data": [[123]]}
 {"name": "multi_line_comment_in_select", "sql": "SELECT id /* multi-line\ncomment */ FROM orders WHERE id = 123", "errors": [], "data": [[123]]}

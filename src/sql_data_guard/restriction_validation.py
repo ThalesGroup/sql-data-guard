@@ -60,15 +60,18 @@ def validate_restrictions(config: dict):
                 values = restriction.get("values")
                 if not (
                     isinstance(values, list)
-                    and len(values) == 2
-                    and all(isinstance(v, (int, float)) for v in values)
+                    and len(values) > 0
+                    and all(
+                        isinstance(v, (int, float, str)) and not isinstance(v, bool)
+                        for v in values
+                    )
                 ):
                     raise ValueError(
-                        f"Invalid 'IN' format. Expected list of two numeric values. Received: {values}"
+                        f"Invalid 'IN' format. Expected a non-empty list of numbers or strings. Received: {values}"
                     )
 
-            elif operation == ">=":
-                # You may want to ensure the value provided is numeric for >=
+            elif operation in (">", "<", ">=", "<="):
+                # comparison operators are evaluated numerically
                 value = restriction.get("value")
                 if not isinstance(value, (int, float)):
                     raise ValueError(

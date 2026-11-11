@@ -68,32 +68,48 @@ def _create_new_condition(
     Returns: condition expression
 
     """
-    if restriction.get("operation") == "BETWEEN":
+    dialect = context.dialect
+    operation = restriction.get("operation")
+    if operation == "BETWEEN":
         operator = "BETWEEN"
-        operand = f"{_format_value(restriction['values'][0])} AND {_format_value(restriction['values'][1])}"
-    elif restriction.get("operation") == "IN":
+        operand = (
+            f"{_format_value(restriction['values'][0], dialect)} AND "
+            f"{_format_value(restriction['values'][1], dialect)}"
+        )
+    elif operation == "IN":
         operator = "IN"
         values = restriction.get("values", [restriction.get("value")])
-        operand = f"({', '.join(map(str, values))})"
+        operand = f"({', '.join(_format_value(v, dialect) for v in values)})"
     else:
-        operator = "="
+        operator = operation if operation in _COMPARISON_OPERATORS else "="
         operand = (
-            _format_value(restriction["value"])
+            _format_value(restriction["value"], dialect)
             if "value" in restriction
             else str(restriction["values"])[1:-1]
         )
     new_condition = sqlglot.parse_one(
         f"{table_prefix}{restriction['column']} {operator} {operand}",
-        dialect=context.dialect,
+        dialect=dialect,
     )
     return new_condition
 
 
-def _format_value(value):
+_COMPARISON_OPERATORS = (">", "<", ">=", "<=")
+
+
+def _format_value(value, dialect=None):
+    """Formats a config value as an SQL literal, escaping it for the dialect."""
     if isinstance(value, str):
-        return f"'{value}'"
-    else:
-        return value
+        return expr.Literal.string(value).sql(dialect=dialect)
+    return str(value)
+
+
+def _to_number(value):
+    """Returns value as float, or None if it is not numeric."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _verify_restriction(
@@ -137,25 +153,32 @@ def _verify_restriction(
         return str(exp.right.this) in values
 
     if isinstance(exp, expr.Between):
-        low, high = int(exp.args["low"].this), int(exp.args["high"].this)
-        if len(values) == 2:  # Ensure we have exactly two values
-            restriction_low, restriction_high = map(int, values)
-            return restriction_low <= low and high <= restriction_high
+        low = _to_number(exp.args["low"].this)
+        high = _to_number(exp.args["high"].this)
+        restriction_values = [_to_number(v) for v in values]
+        if len(values) == 2 and None not in [low, high, *restriction_values]:
+            return restriction_values[0] <= low and high <= restriction_values[1]
+        return False
 
     if isinstance(exp, (expr.LT, expr.LTE, expr.GT, expr.GTE)) and isinstance(
         exp.right, expr.Condition
     ):
-        if restriction.get("operation") not in [">=", ">", "<=", "<"]:
+        if restriction.get("operation") not in _COMPARISON_OPERATORS:
             return False
-        assert len(values) == 1
+        if len(values) != 1:
+            return False
+        actual = _to_number(exp.right.this)
+        limit = _to_number(values[0])
+        if actual is None or limit is None:
+            return False
         if isinstance(exp, expr.LT) and restriction["operation"] == "<":
-            return str(exp.right.this) < values[0]
+            return actual < limit
         elif isinstance(exp, expr.LTE) and restriction["operation"] == "<=":
-            return str(exp.right.this) <= values[0]
+            return actual <= limit
         elif isinstance(exp, expr.GT) and restriction["operation"] == ">":
-            return str(exp.right.this) > values[0]
+            return actual > limit
         elif isinstance(exp, expr.GTE) and restriction["operation"] == ">=":
-            return str(exp.right.this) >= values[0]
+            return actual >= limit
         else:
             return False
     return False
