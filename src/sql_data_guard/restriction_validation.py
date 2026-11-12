@@ -95,11 +95,11 @@ def _non_empty_string(value) -> bool:
 
 def _validate_database_options(config: dict):
     """`databases`, `strict_database` and `catalog_name` (top level and per table)."""
-    if not isinstance(config.get("strict_database", False), bool):
-        raise ValueError(
-            "Invalid 'strict_database'. Expected true or false. "
-            f"Received: {config['strict_database']!r}"
-        )
+    for key in ("strict_database", "allow_metadata"):
+        if not isinstance(config.get(key, False), bool):
+            raise ValueError(
+                f"Invalid '{key}'. Expected true or false. Received: {config[key]!r}"
+            )
     if "catalog_name" in config and not _non_empty_string(config["catalog_name"]):
         raise ValueError(
             f"Invalid 'catalog_name'. Expected a non-empty string. Received: {config['catalog_name']!r}"

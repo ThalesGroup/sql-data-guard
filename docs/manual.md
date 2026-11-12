@@ -61,6 +61,7 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `force_limit` | no | Maximum number of rows the outermost query may return. See [Row limit](#row-limit). |
 | `databases` | no | Allow-list of databases/schemas. See [Database names](#database-names). |
 | `strict_database` | no | `true` to require a database qualifier on every table. See [Database names](#database-names). |
+| `allow_metadata` | no | `true` to allow `SHOW` / `DESCRIBE` statements about the configured tables and databases. See [Metadata statements](#metadata-statements). |
 | `catalog_name` | no | Catalog/project of the tables (`catalog.schema.table`, `project.dataset.table`). See [Database names](#database-names). |
 
 ### Identifier case
@@ -116,6 +117,25 @@ Names are compared case-insensitively. Table names with more than three parts (`
   ]
 }
 ```
+
+## Metadata statements
+
+With `"allow_metadata": true`, the schema-discovery statements below are allowed, scoped by the rest of the configuration. Anything else (`SHOW GRANTS`, `SHOW VARIABLES`, `DESCRIBE SELECT ...`, `DESCRIBE FUNCTION`, extra clauses...) is rejected with `... is not a supported metadata statement`. Without the option, `SHOW` and `DESCRIBE` are rejected as before.
+
+| Statement | Allowed when |
+|-----------|--------------|
+| `DESCRIBE` / `DESC [TABLE] [EXTENDED\|FORMATTED] t` | `t` is a configured table |
+| `SHOW COLUMNS FROM\|IN t [FROM\|IN db] [LIKE '...']` | `t` is a configured table |
+| `SHOW CREATE TABLE t`, `SHOW CREATE VIEW v` | `t` / `v` is configured (configure a view like a table) |
+| `SHOW PARTITIONS t`, `SHOW TBLPROPERTIES t` | `t` is a configured table |
+| `SHOW [FULL] TABLES` / `SHOW VIEWS [FROM\|IN [catalog.]db] [LIKE '...']` | `db` is in `databases` (without that list: the database of a configured table). With `strict_database`, `FROM db` is required |
+| `DESCRIBE DATABASE\|SCHEMA db` | same as `SHOW TABLES FROM db` |
+| `SHOW SCHEMAS` / `SHOW DATABASES [FROM\|IN [DATABASE] catalog] [LIKE '...']` | `catalog` is a configured `catalog_name` (any, when none is configured) |
+| `SHOW CATALOGS [LIKE '...']` | always |
+
+A table is checked exactly like a table in `FROM`: name, `database_name`, `databases`, `strict_database`, `catalog_name`, and names with more than three parts are rejected. `LIKE` takes a string literal, and nothing may follow the statement (one trailing `;` is fine). An allowed statement returns `allowed: true` and is never rewritten (`force_limit` does not apply).
+
+**The results are not filtered.** The guard only sees the statement: `DESCRIBE` and `SHOW COLUMNS` list every column of the table, including columns that are not in `columns` or are masked; `SHOW TABLES` lists every table of an allowed database; `SHOW CREATE VIEW` returns the view's SQL, with the tables, columns and literals it uses. Enable the option only where these names may be seen, or filter the results yourself.
 
 ## Column masking
 
@@ -199,7 +219,7 @@ Whether to apply a suggestion is a decision for a person: it widens what queries
 
 ## What is checked
 
-- **One statement, read-only.** Only a single `SELECT` (including `UNION`/`INTERSECT`/`EXCEPT` and `WITH`) is allowed. Multiple statements, `INSERT`/`UPDATE`/`DELETE`/DDL, commands (`PRAGMA`, `SET`, `COPY`, `ATTACH` ...), `SELECT ... INTO`, locking clauses (`FOR UPDATE`) and data-modifying CTEs are rejected.
+- **One statement, read-only.** Only a single `SELECT` (including `UNION`/`INTERSECT`/`EXCEPT` and `WITH`) is allowed, plus the [metadata statements](#metadata-statements) when `allow_metadata` is set. Multiple statements, `INSERT`/`UPDATE`/`DELETE`/DDL, commands (`PRAGMA`, `SET`, `COPY`, `ATTACH` ...), `SELECT ... INTO`, locking clauses (`FOR UPDATE`) and data-modifying CTEs are rejected.
 - **Correlated sub-queries.** A column qualified with the alias of a table of an enclosing query (`o.notes` inside a sub-query) is checked against that table, not against the tables the sub-query selects from.
 - **Tables.** Every table in `FROM`/`JOIN`, in every nested query, must be in `tables`. A CTE name can be used as a table only inside the query that defines it; it never makes a real table of the same name usable.
 - **Columns, in every clause.** Columns in `SELECT`, `WHERE`, `JOIN ... ON`/`USING`, `GROUP BY`, `HAVING`, `ORDER BY` and window clauses must be allowed for their table. A disallowed column in `SELECT` is removed (a fixable error); anywhere else the query is rejected, because removing it would change the meaning of the query. Columns of derived tables and CTEs are checked where they come from.

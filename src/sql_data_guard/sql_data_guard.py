@@ -5,6 +5,12 @@ import sqlglot
 import sqlglot.expressions as expr
 from sqlglot.optimizer.simplify import simplify
 
+from .metadata_statements import (
+    Classified,
+    classify_describe,
+    classify_show,
+    starts_with_show,
+)
 from .column_masking import find_mask, masked_select_item, mask_value, table_masks
 from .restriction_validation import validate_restrictions, UnsupportedRestrictionError
 from .restriction_verification import verify_restrictions
@@ -129,6 +135,10 @@ def _verify_sql(
         }
 
     result = VerificationContext(config, dialect)
+    if config.get("allow_metadata") and starts_with_show(sql, dialect):
+        # SHOW is matched on its tokens: most dialects do not parse it
+        _verify_metadata(classify_show(sql, dialect), result)
+        return _result(result, violations)
     parsed = None
     try:
         statements = [s for s in sqlglot.parse(sql, dialect=dialect) if s is not None]
@@ -143,6 +153,9 @@ def _verify_sql(
             result.add_error("Multiple statements are not allowed", False, 1)
         else:
             parsed = statements[0]
+    if parsed and config.get("allow_metadata") and isinstance(parsed, expr.Describe):
+        _verify_metadata(classify_describe(parsed), result)
+        return _result(result, violations)
     if parsed:
         if isinstance(parsed, expr.Command):
             result.add_error(f"{parsed.name} statement is not allowed", False, 0.9)
@@ -159,14 +172,66 @@ def _verify_sql(
         _enforce_force_limit(parsed, result)
     if parsed is not None and result.can_fix and len(result.errors) > 0:
         result.fixed = parsed.sql(dialect=dialect)
+    return _result(result, violations)
+
+
+def _result(context: VerificationContext, violations: Optional[List[dict]]) -> dict:
     if violations is not None:
-        violations.extend(result.violations)
+        violations.extend(context.violations)
     return {
-        "allowed": len(result.errors) == 0,
-        "errors": result.errors,
-        "fixed": result.fixed,
-        "risk": result.risk,
+        "allowed": len(context.errors) == 0,
+        "errors": context.errors,
+        "fixed": context.fixed,
+        "risk": context.risk,
     }
+
+
+def _verify_metadata(statement: Classified, context: VerificationContext):
+    """
+    Verifies a SHOW / DESCRIBE statement (config["allow_metadata"]). A statement about a table
+    needs a configured table, with the same checks as a table in FROM; one about a database or a
+    catalog follows `databases`, `strict_database` and `catalog_name`. Never fixable.
+    """
+    if isinstance(statement, str):
+        context.add_error(f"{statement} is not a supported metadata statement", False, 0.9)
+        return
+    config = context.config
+    if statement.table is not None:
+        _verify_table_reference(statement.table, context)
+        return
+    if statement.catalog is not None and not _catalog_allowed(statement.catalog, config):
+        context.add_error(f"Catalog {statement.catalog} is not allowed", False, 1)
+        return
+    if statement.database is None:
+        if statement.form in ("SHOW TABLES", "SHOW VIEWS") and config.get("strict_database"):
+            context.add_error(
+                f"{statement.form} must name its database (strict_database)", False, 0.7
+            )
+        return
+    if not _database_allowed(statement.database, config):
+        context.add_error(f"Database {statement.database} is not allowed", False, 1)
+        context.add_violation(
+            {"type": "database", "table_name": None, "database_name": statement.database}
+        )
+
+
+def _database_allowed(database: str, config: dict) -> bool:
+    """
+    A database named by a metadata statement: listed in `databases`, or without that list, the
+    database of a configured table (any database when no table has a database_name).
+    """
+    if "databases" in config:
+        return database.lower() in {d.lower() for d in config["databases"]}
+    known = {t["database_name"].lower() for t in config["tables"] if t.get("database_name")}
+    return not known or database.lower() in known
+
+
+def _catalog_allowed(catalog: str, config: dict) -> bool:
+    """The configured catalogs (top level and per table); any catalog when none is configured."""
+    known = {t["catalog_name"].lower() for t in config["tables"] if t.get("catalog_name")}
+    if config.get("catalog_name"):
+        known.add(config["catalog_name"].lower())
+    return not known or catalog.lower() in known
 
 
 # Functions that read files, run commands, sleep or otherwise reach outside the query.
@@ -444,41 +509,44 @@ def _verify_from_tables(context, query_statement):
                 sources.add(t.alias)
     context.push_sources(sources)  # popped by _verify_query_statement
     for t in from_tables:
-        if len(t.parts) > 3:
-            # `a.b.c.orders`: catalog/db/name are only three of the parts, so the configuration
-            # cannot be matched against the table the database would really read
-            context.add_error(
-                f"Table {'.'.join(p.name for p in t.parts)} is not allowed: "
-                "names with more than three parts are not supported",
-                False,
-                1,
-            )
-            continue
         is_cte = not t.db and t.name in context.cte_names
-        if not is_cte and not _verify_table_database(t, context):
-            continue
-        found = False
-        for config_t in context.config["tables"]:
-            # Only CTE names can be referenced as tables. Subquery aliases
-            # live in the same namespace for columns, not for table lookups.
-            if table_matches(t, config_t) or is_cte:
-                found = True
-        if not found:
-            if _catalog_mismatch(t, context):
-                context.add_error(
-                    f"Table {t.name} is not allowed: catalog {t.catalog} is not allowed",
-                    False,
-                    1,
-                )
-                context.add_violation(
-                    {"type": "catalog", "table_name": t.name, "catalog_name": t.catalog}
-                )
-                continue
-            context.add_error(f"Table {t.name} is not allowed", False, 1)
-            context.add_violation(
-                {"type": "table", "table_name": t.name, "database_name": t.db or None}
-            )
+        if not is_cte:
+            _verify_table_reference(t, context)
     return from_tables
+
+
+def _verify_table_reference(t: expr.Table, context: VerificationContext) -> bool:
+    """
+    Checks a reference to a real table (not a CTE): its name, database and catalog must match a
+    configured table. Records the error (and the violation) and returns False if not.
+    """
+    if len(t.parts) > 3:
+        # `a.b.c.orders`: catalog/db/name are only three of the parts, so the configuration
+        # cannot be matched against the table the database would really read
+        context.add_error(
+            f"Table {'.'.join(p.name for p in t.parts)} is not allowed: "
+            "names with more than three parts are not supported",
+            False,
+            1,
+        )
+        return False
+    if not _verify_table_database(t, context):
+        return False
+    if any(table_matches(t, config_t) for config_t in context.config["tables"]):
+        return True
+    if _catalog_mismatch(t, context):
+        context.add_error(
+            f"Table {t.name} is not allowed: catalog {t.catalog} is not allowed", False, 1
+        )
+        context.add_violation(
+            {"type": "catalog", "table_name": t.name, "catalog_name": t.catalog}
+        )
+        return False
+    context.add_error(f"Table {t.name} is not allowed", False, 1)
+    context.add_violation(
+        {"type": "table", "table_name": t.name, "database_name": t.db or None}
+    )
+    return False
 
 
 def _verify_table_database(table: expr.Table, context: VerificationContext) -> bool:

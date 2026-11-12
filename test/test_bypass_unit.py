@@ -432,6 +432,24 @@ def test_statement_bypass(sql):
     assert result["fixed"] is None, f"offered a rewrite of a non-SELECT: {result}"
 
 
+# With allow_metadata, only these entries of STATEMENT_BYPASS become allowed: metadata
+# statements about configured tables. Everything else must stay rejected.
+_METADATA_ALLOWED = {"SHOW TABLES", "DESCRIBE orders"}
+
+
+@pytest.mark.parametrize("sql", STATEMENT_BYPASS)
+@pytest.mark.parametrize("dialect", ["sqlite", "mysql", "trino", "duckdb"])
+def test_statement_bypass_with_allow_metadata(sql, dialect):
+    sql = sql.values[0] if hasattr(sql, "values") else sql
+    result = verify_sql(sql, {**CONFIG, "allow_metadata": True}, dialect)
+    assert result["fixed"] is None, result
+    if sql in _METADATA_ALLOWED:
+        assert result["allowed"], result
+    else:
+        assert not result["allowed"], f"approved with allow_metadata: {result}"
+        assert not any(e.startswith("Internal error") for e in result["errors"]), result
+
+
 # --------------------------------------------------------------------------- 5
 PARSER_DIFFERENTIAL = [
     # comment tricks

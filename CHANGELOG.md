@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `allow_metadata` config option: allows `SHOW` / `DESCRIBE` schema-discovery statements (`DESCRIBE t`, `SHOW COLUMNS`, `SHOW CREATE TABLE`/`VIEW`, `SHOW TABLES`/`VIEWS`, `SHOW SCHEMAS`/`DATABASES`, `SHOW CATALOGS`, `SHOW PARTITIONS`, `SHOW TBLPROPERTIES`, `DESCRIBE DATABASE`), scoped by the configured tables, `databases`, `strict_database` and `catalog_name`. Other forms stay rejected. Results are not filtered: see the manual, "Metadata statements".
+
 ## 0.2.1 - 2026-11-12
 
 ### Added
