@@ -85,6 +85,12 @@ def _verify_sql(
             "fixed": None,
             "risk": 1.0,
         }
+    # First, validate the configuration (restrictions, limits, masks)
+    try:
+        validate_restrictions(config)
+    except (UnsupportedRestrictionError, ValueError) as e:
+        return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
+
     max_length = config.get("max_length", _DEFAULT_MAX_LENGTH)
     if len(sql) > max_length:
         return {
@@ -93,12 +99,6 @@ def _verify_sql(
             "fixed": None,
             "risk": 1.0,
         }
-
-    # First, validate restrictions
-    try:
-        validate_restrictions(config)
-    except (UnsupportedRestrictionError, ValueError) as e:
-        return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
 
     result = VerificationContext(config, dialect)
     parsed = None
@@ -333,6 +333,14 @@ def _has_static_expression(context: VerificationContext, exp: expr.Expression) -
 
 
 def _verify_query_statement(query_statement: expr.Query, context: VerificationContext):
+    if not isinstance(query_statement, expr.Query):
+        # e.g. `FROM (payroll)` or `FROM (a JOIN b ON ...)`: sqlglot parses the parenthesized
+        # table as the body of a sub-query.
+        if isinstance(query_statement, expr.Table):
+            context.add_error("Parenthesized table references are not supported", False, 0.7)
+        else:
+            context.add_error("Unsupported nested query", False, 0.7)
+        return
     context.push_cte_scope()
     try:
         _verify_ctes(query_statement, context)
@@ -412,7 +420,41 @@ def _verify_from_tables(context, query_statement):
             context.add_violation(
                 {"type": "table", "table_name": t.name, "database_name": t.db or None}
             )
+        elif (
+            context.config.get("qualify_tables")
+            and not t.db
+            and t.name not in context.cte_names
+        ):
+            _qualify_table(t, context)
     return from_tables
+
+
+def _qualify_table(table: expr.Table, context: VerificationContext):
+    """
+    Adds the configured database_name to an unqualified table (config["qualify_tables"]).
+    Without it, the database resolves the name in its default schema, which may hold another
+    table with the same name.
+    """
+    databases = set()
+    for config_t in context.config["tables"]:
+        if table_matches(table, config_t):
+            if not config_t.get("database_name"):
+                return  # configured without a database: the name is used as it is
+            databases.add(config_t["database_name"].lower())
+    if len(databases) > 1:
+        context.add_error(
+            f"Table {table.name} is ambiguous: qualify it with its database", False, 0.7
+        )
+        return
+    database = next(
+        c["database_name"] for c in context.config["tables"] if table_matches(table, c)
+    )
+    table.set("db", expr.to_identifier(database))
+    context.add_error(
+        f"Table {table.name} qualified with its database: {database}.{table.name}",
+        True,
+        0.3,
+    )
 
 
 def _verify_sub_queries(context, query_statement):
@@ -546,9 +588,18 @@ def _verify_col(
                     return True
                 return _reject_col(col, context, in_select, table=matches[0])
     visible = context.visible_dynamic_tables
+    if col.table != "":
+        # a qualifier naming a CTE / derived table: the column must be one it exposes (a column
+        # removed from its SELECT list, or never in it, does not exist there)
+        dynamic = [c for n, c in visible.items() if same_name(n, col.table)]
+        if dynamic:
+            if col.is_star or any(
+                same_name(col.name, c) for cols in dynamic for c in cols
+            ):
+                return True
+            return _reject_col(col, context, in_select, from_tables=from_tables)
     if (
-        (col.table != "" and col.table.lower() in {n.lower() for n in visible})
-        or (
+        (
             col.table == ""
             and col.name.lower()
             in {c.lower() for t_cols in visible.values() for c in t_cols}

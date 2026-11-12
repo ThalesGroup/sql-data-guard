@@ -70,7 +70,7 @@ jobs:
           sleep 20
         done
         [ "$installed" = "1" ] || { echo "Package did not become available on TestPyPI"; exit 1; }
-        pip install pytest
+        pip install pytest duckdb
       shell: bash
 
     - name: Run unit tests with test PyPi package
@@ -78,7 +78,7 @@ jobs:
       # This specific unit test file only uses public methods from the package
       run: |
         source .venv/bin/activate        
-        python -m pytest --color=yes test/test_sql_guard_unit.py test/test_bypass_unit.py
+        python -m pytest --color=yes test/test_sql_guard_unit.py test/test_bypass_unit.py test/test_bypass_policies_unit.py
 
     - name: Clear test PyPi virtual environment
       run: rm -rf .venv
@@ -119,7 +119,7 @@ jobs:
           sleep 20
         done
         [ "$installed" = "1" ] || { echo "Package did not become available on PyPI"; exit 1; }
-        pip install pytest
+        pip install pytest duckdb
       shell: bash
 
     - name: Run unit tests with test PyPi package
@@ -127,4 +127,4 @@ jobs:
       # This specific unit test file only uses public methods from the package
       run: |
         source .venv/bin/activate        
-        python -m pytest --color=yes test/test_sql_guard_unit.py test/test_bypass_unit.py
+        python -m pytest --color=yes test/test_sql_guard_unit.py test/test_bypass_unit.py test/test_bypass_policies_unit.py

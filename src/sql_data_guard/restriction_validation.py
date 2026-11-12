@@ -1,8 +1,92 @@
+import math
+
+import sqlglot
+import sqlglot.expressions as expr
+
 from .column_masking import validate_column_masks
 
 
 class UnsupportedRestrictionError(Exception):
     pass
+
+
+def _validate_max_length(config: dict):
+    if "max_length" not in config:
+        return
+    value = config["max_length"]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"Invalid 'max_length'. Expected a positive integer. Received: {value!r}"
+        )
+
+
+def _is_scalar(value) -> bool:
+    """A restriction value: a string, a bool or a finite number."""
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return isinstance(value, (bool, int, str))
+
+
+def _is_number(value) -> bool:
+    return _is_scalar(value) and not isinstance(value, (bool, str))
+
+
+def _is_column_name(name) -> bool:
+    """A plain (optionally quoted) column name, as it is pasted into the condition that is added."""
+    if not isinstance(name, str) or not name.strip():
+        return False
+    try:
+        statements = sqlglot.parse(name)
+    except sqlglot.errors.SqlglotError:
+        return False
+    if len(statements) != 1:  # `id; DROP TABLE x`
+        return False
+    parsed = statements[0]
+    return isinstance(parsed, expr.Column) and not parsed.table
+
+
+def _validate_columns(table: dict):
+    columns = table.get("columns")
+    if not isinstance(columns, list) or not columns:
+        raise ValueError(
+            "Each table must have a 'columns' key with valid column definitions."
+        )
+    if not all(isinstance(c, str) and c.strip() for c in columns):
+        raise ValueError(
+            f"The 'columns' of table '{table['table_name']}' must be non-empty strings."
+        )
+
+
+def _validate_restriction_shape(restriction, table_name: str):
+    """Checks the keys every restriction needs, whatever its operation."""
+    if not isinstance(restriction, dict):
+        raise ValueError(f"Each restriction of table '{table_name}' must be an object.")
+    if not _is_column_name(restriction.get("column")):
+        raise ValueError(
+            f"Each restriction of table '{table_name}' must have a 'column' with a column name. "
+            f"Received: {restriction.get('column')!r}"
+        )
+    operation = restriction.get("operation")
+    if operation is not None and not isinstance(operation, str):
+        raise UnsupportedRestrictionError(
+            f"Invalid restriction: 'operation={operation!r}' is not supported."
+        )
+    if operation in (None, "="):
+        # `value`, or `values` (the column may then equal any of them)
+        if "value" in restriction:
+            ok = _is_scalar(restriction["value"])
+        else:
+            values = restriction.get("values")
+            ok = (
+                isinstance(values, list)
+                and len(values) > 0
+                and all(_is_scalar(v) for v in values)
+            )
+        if not ok:
+            raise ValueError(
+                f"Invalid restriction for column '{restriction['column']}' in table '{table_name}'. "
+                "Expected a 'value' (a number, string or boolean) or a non-empty list of 'values'."
+            )
 
 
 def _validate_force_limit(config: dict):
@@ -47,6 +131,11 @@ def validate_restrictions(config: dict):
         "BETWEEN",
         "IN",
     ]  # Allowed operations
+    _validate_max_length(config)
+    if not isinstance(config.get("qualify_tables", False), bool):
+        raise ValueError(
+            f"Invalid 'qualify_tables'. Expected true or false. Received: {config['qualify_tables']!r}"
+        )
     _validate_force_limit(config)
     _validate_function_list(config, "blocked_functions")
     _validate_function_list(config, "allowed_functions")
@@ -55,6 +144,8 @@ def validate_restrictions(config: dict):
     # Check if tables are empty
     if not tables:
         raise ValueError("Configuration must contain at least one table.")
+    if not isinstance(tables, list):
+        raise ValueError("'tables' must be a list.")
 
     seen = set()
     for table in tables:
@@ -63,28 +154,36 @@ def validate_restrictions(config: dict):
         # Ensure that 'table_name' exists in each table
         if "table_name" not in table:
             raise ValueError("Each table must have a 'table_name' key.")
-        key = (str(table["table_name"]).lower(), str(table.get("database_name") or "").lower())
-        if key in seen:
-            raise ValueError(f"Table '{table['table_name']}' is defined more than once.")
-        seen.add(key)
-            # Ensure that 'columns' exists and is not empty in each table
-        if "columns" not in table or not table["columns"]:
+        if not isinstance(table["table_name"], str) or not table["table_name"].strip():
+            raise ValueError("Each 'table_name' must be a non-empty string.")
+        database_name = table.get("database_name")
+        if database_name is not None and not isinstance(database_name, str):
             raise ValueError(
-                "Each table must have a 'columns' key with valid column definitions."
+                f"The 'database_name' of table '{table['table_name']}' must be a string."
             )
+        key = (table["table_name"].lower(), (database_name or "").lower())
+        if key in seen:
+            raise ValueError(
+                f"Table '{table['table_name']}' is defined more than once."
+            )
+        seen.add(key)
+        _validate_columns(table)
 
         restrictions = table.get("restrictions", [])
-        if not restrictions:
-            continue  # Skip if no restrictions are provided
+        if not isinstance(restrictions, list):
+            raise ValueError(
+                f"The 'restrictions' of table '{table['table_name']}' must be a list."
+            )
 
         for restriction in restrictions:
+            _validate_restriction_shape(restriction, table["table_name"])
             operation = restriction.get("operation")
             if operation == "BETWEEN":
                 values = restriction.get("values")
                 if not (
                     isinstance(values, list)
                     and len(values) == 2
-                    and all(isinstance(v, (int, float)) for v in values)
+                    and all(_is_number(v) for v in values)
                     and values[0] < values[1]
                 ):
                     raise ValueError(
@@ -96,10 +195,7 @@ def validate_restrictions(config: dict):
                 if not (
                     isinstance(values, list)
                     and len(values) > 0
-                    and all(
-                        isinstance(v, (int, float, str)) and not isinstance(v, bool)
-                        for v in values
-                    )
+                    and all(_is_scalar(v) and not isinstance(v, bool) for v in values)
                 ):
                     raise ValueError(
                         f"Invalid 'IN' format. Expected a non-empty list of numbers or strings. Received: {values}"
@@ -108,7 +204,7 @@ def validate_restrictions(config: dict):
             elif operation in (">", "<", ">=", "<="):
                 # comparison operators are evaluated numerically
                 value = restriction.get("value")
-                if not isinstance(value, (int, float)):
+                if not _is_number(value):
                     raise ValueError(
                         f"Invalid restriction value type for column '{restriction['column']}' in table '{table['table_name']}'. Expected a numeric value."
                     )

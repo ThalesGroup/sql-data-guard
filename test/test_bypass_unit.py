@@ -7,6 +7,10 @@ seeded sqlite database. The test fails if any forbidden marker comes back:
   - table `payroll`            -> value contains "SALARY"
   - rows of another account    -> value contains "OTHER"
 A failing test is a confirmed bypass (or a wrong assumption in the test).
+
+Two weaker failures are checked too: a rejection that only comes from verify_sql's
+catch-all (an "Internal error" result: fail-closed, but not a deliberate decision), and a
+`fixed` rewrite that no longer runs although the input did.
 """
 
 import sqlite3
@@ -35,31 +39,33 @@ _FORBIDDEN_MARKERS = ("SECRET", "SALARY", "OTHER")
 # ----------------------------------------------------------------------------
 # Known, unfixed issues go here as `reason` strings; each becomes a strict xfail so it
 # is documented now and fails loudly (XPASS) once fixed, when the entry is deleted.
-# Currently empty: every issue found by these scenarios has been fixed.
 # ----------------------------------------------------------------------------
-_KNOWN_SQL = {}
-_KNOWN_FUNCS = {}
-_KNOWN_CONFIG_RAISE = set()
-_KNOWN_CONFIG_DUP = set()
-_CFG_RAISE = "malformed config raises instead of returning an error result"
+# Currently empty: every issue found by these scenarios has been fixed.
+_KNOWN_SQL: dict = {}
+_KNOWN_FUNCS: dict = {}
+# Indices into CONFIG_EDGE_CASES.
+_KNOWN_CONFIG_RAISE: set = set()
+_KNOWN_CONFIG_DUP: set = set()
+_CFG_RAISE = (
+    "malformed config hits the internal-error fallback instead of a config error"
+)
 _CFG_DUP = "duplicate table entries in the config silently widen the allow-list"
+# `fixed` rewrites that fail on sqlite although the input runs.
+_KNOWN_BROKEN_FIX: dict = {}
+
+_INTERNAL_ERROR = "Internal error while verifying SQL"
 
 
 def _xfail(reason):
     return pytest.mark.xfail(strict=True, reason=reason)
 
 
-def _known_sql(sql):
-    if sql in _KNOWN_SQL:
-        return _KNOWN_SQL[sql]
-    return None
+def _mark_sql(sqls, known=_KNOWN_SQL):
+    return [pytest.param(s, marks=_xfail(known[s])) if s in known else s for s in sqls]
 
 
-def _mark_sql(sqls):
-    return [
-        pytest.param(s, marks=_xfail(_known_sql(s))) if _known_sql(s) else s
-        for s in sqls
-    ]
+def _internal_error(result):
+    return next((e for e in result["errors"] if e.startswith(_INTERNAL_ERROR)), None)
 
 
 @pytest.fixture(scope="module")
@@ -78,6 +84,14 @@ def cnn():
         yield conn
 
 
+def _runs(cnn, sql: str) -> bool:
+    try:
+        cnn.execute(sql).fetchall()
+        return True
+    except (sqlite3.Error, ValueError):
+        return False
+
+
 def _leaked(cnn, sql: str):
     """Runs sql on sqlite; returns the first forbidden marker found in the output."""
     try:
@@ -93,8 +107,19 @@ def _leaked(cnn, sql: str):
     return None
 
 
-def assert_no_leak(cnn, sql: str, config: dict = CONFIG, dialect: str = "sqlite"):
+def assert_no_leak(
+    cnn,
+    sql: str,
+    config: dict = CONFIG,
+    dialect: str | None = "sqlite",
+    allow_recursion_error: bool = False,
+):
     result = verify_sql(sql, config, dialect)
+    internal = _internal_error(result)
+    if internal and not (allow_recursion_error and "RecursionError" in internal):
+        pytest.fail(
+            f"rejected only by the internal-error fallback: {sql!r} -> {result}"
+        )
     if result["allowed"]:
         sql_to_run = sql
     elif result["fixed"]:
@@ -142,7 +167,6 @@ RESTRICTION_BYPASS = [
     "SELECT id, product_name FROM (SELECT * FROM orders) t",
     "SELECT id, product_name FROM (SELECT id, product_name, account_id FROM orders) t WHERE account_id = 123 OR 1",
     "WITH o AS (SELECT id, product_name, account_id FROM orders) SELECT id, product_name FROM o",
-    "WITH o AS (SELECT id, product_name, account_id FROM orders WHERE account_id = 123) SELECT id, product_name FROM orders",
     "WITH o AS (SELECT id, product_name, account_id FROM orders WHERE account_id = 123) SELECT id, product_name FROM orders",
     "SELECT id, product_name FROM (SELECT id, product_name FROM orders WHERE account_id = 123) t, orders",
     "SELECT id FROM orders WHERE id IN (SELECT id FROM orders WHERE account_id = 123)",
@@ -308,6 +332,25 @@ def test_table_bypass(cnn, sql):
         ), f"approved a query touching payroll: {result}"
 
 
+# --------------------------------------------------------------------------- 3b
+# A `fixed` rewrite of a query that runs must still run: otherwise the guard silently
+# kept a reference it should have reported (and _leaked would hide it as "nothing leaks").
+@pytest.mark.parametrize(
+    "sql",
+    _mark_sql(
+        [
+            p if isinstance(p, str) else p.values[0]
+            for p in RESTRICTION_BYPASS + COLUMN_BYPASS + TABLE_BYPASS
+        ],
+        _KNOWN_BROKEN_FIX,
+    ),
+)
+def test_fixed_sql_still_runs(cnn, sql):
+    result = verify_sql(sql, CONFIG, "sqlite")
+    if result["fixed"] and _runs(cnn, sql):
+        assert _runs(cnn, result["fixed"]), f"fixed SQL does not run: {result}"
+
+
 # --------------------------------------------------------------------------- 4
 STATEMENT_BYPASS = [
     "SELECT id FROM orders WHERE account_id = 123; DROP TABLE orders",
@@ -386,6 +429,7 @@ STATEMENT_BYPASS = _mark_sql(STATEMENT_BYPASS)
 def test_statement_bypass(sql):
     result = verify_sql(sql, CONFIG, "sqlite")
     assert not result["allowed"], f"approved non-SELECT statement: {result}"
+    assert result["fixed"] is None, f"offered a rewrite of a non-SELECT: {result}"
 
 
 # --------------------------------------------------------------------------- 5
@@ -459,8 +503,10 @@ PARSER_DIFFERENTIAL = _mark_sql(PARSER_DIFFERENTIAL)
 @pytest.mark.parametrize("dialect", ["sqlite", "mysql", "postgres", "duckdb", None])
 def test_parser_differential(cnn, sql, dialect):
     # The guard parses with `dialect`; the data is always executed on sqlite.
+    # Very deep nesting is rejected through the catch-all (RecursionError); that is the
+    # intended depth limit, so it is not reported as an internal-error rejection.
     try:
-        assert_no_leak(cnn, sql, dialect=dialect)
+        assert_no_leak(cnn, sql, dialect=dialect, allow_recursion_error=True)
     except RecursionError:
         pytest.fail("RecursionError escaped verify_sql")
 
@@ -536,6 +582,7 @@ FUNCTION_BYPASS = [
 def test_function_and_catalog_bypass(sql, dialect):
     result = verify_sql(sql, CONFIG, dialect)
     assert not result["allowed"], f"approved side-effecting/catalog query: {result}"
+    assert result["fixed"] is None, f"offered a rewrite of it: {result}"
 
 
 # --------------------------------------------------------------------------- 7
@@ -741,7 +788,8 @@ CONFIG_EDGE_CASES = [
 @pytest.mark.parametrize("config", CONFIG_EDGE_CASES)
 def test_bad_config_never_raises_and_never_leaks(cnn, config):
     # A malformed config must produce a result (rejecting is fine), never raise,
-    # and never let the forbidden `secret` column through.
+    # never let the forbidden `secret` column through, and be rejected deliberately
+    # (a config error), not by the internal-error fallback.
     for sql in [
         "SELECT id FROM orders",
         "SELECT id FROM orders WHERE id = 1",
@@ -750,6 +798,7 @@ def test_bad_config_never_raises_and_never_leaks(cnn, config):
     ]:
         result = verify_sql(sql, config, "sqlite")
         assert isinstance(result, dict)
+        assert not _internal_error(result), f"{config} {sql} -> {result}"
         if result["allowed"] or result["fixed"]:
             sql_to_run = sql if result["allowed"] else result["fixed"]
             assert _leaked(cnn, sql_to_run) is None, f"{config} {sql} -> {result}"

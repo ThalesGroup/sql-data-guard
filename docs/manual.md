@@ -50,7 +50,7 @@ A repaired query has been verified to comply with the policy: for example a disa
 |-----|----------|-------------|
 | `tables` | yes | Non-empty list of the tables the query may read. Any other table is rejected. A table must be listed only once. |
 | `tables[].table_name` | yes | Table name. |
-| `tables[].database_name` | no | Database/schema of the table. When set, a query that qualifies the table (`other_db.orders`) must use this name. |
+| `tables[].database_name` | no | Database/schema of the table. When set, a query that qualifies the table (`other_db.orders`) must use this name. An unqualified name (`orders`) also matches, and the database resolves it in its default schema, which may hold a different table with the same name: set `qualify_tables` to prevent that. |
 | `tables[].columns` | yes | Non-empty list of allowed columns. See [What is checked](#what-is-checked). |
 | `tables[].restrictions` | no | Row restrictions that must hold on every query of this table (see below). |
 | `tables[].column_masks` | no | Columns returned masked instead of in clear text. See [Column masking](#column-masking). |
@@ -58,6 +58,7 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `blocked_functions` | no | Extra function names to reject, added to the built-in list. |
 | `allowed_functions` | no | Allow-list mode: when present, only these functions may be called. See [Function policy](#function-policy). |
 | `force_limit` | no | Maximum number of rows the outermost query may return. See [Row limit](#row-limit). |
+| `qualify_tables` | no | `true` to add the configured `database_name` to unqualified table names (`FROM orders` is fixed to `FROM orders_db.orders`). A table configured in two databases is then rejected as ambiguous when unqualified, and a table also configured without a `database_name` is left as it is. Default `false`. |
 
 ### Identifier case
 
@@ -78,16 +79,16 @@ Each restriction has a `column`, a `value` or `values`, and an optional `operati
 
 | Operation | Config | A query satisfies it when its `WHERE` has |
 |-----------|--------|-------------------------------------------|
-| `=` (default) | `"value": 123` or `"values": [1, 2]` | `col = 123`, or `col IN (...)` using only allowed values |
+| `=` (default) | `"value": 123` or `"values": [1, 2]` (numbers, strings or booleans) | `col = 123`, or `col IN (...)` using only allowed values. With several `values`, the added condition is `col IN (1, 2)`. |
 | `IN` | `"values": ["eu", "us"]` | `col IN (...)` / `col = ...` using only values from the list. A non-empty list of numbers or strings. |
 | `BETWEEN` | `"values": [100, 200]` | `col BETWEEN a AND b` inside the range. Two numbers, the first lower than the second. |
-| `>`, `>=`, `<`, `<=` | `"value": 100` | A comparison of the same kind whose value is at least as strict. `value` must be a number. |
+| `>`, `>=`, `<`, `<=` | `"value": 100` | A comparison in the same direction whose bound is at least as strict (`col < 10` or `col <= 9` for `< 10`), or `col = ...` / `IN` / `BETWEEN` whose values all satisfy it. `value` must be a number. |
 
-Comparisons are numeric (`9 > 10` is false). String values in the configuration are escaped for the dialect when a condition is added.
+Only literal values count: the column on the left, a number, string or boolean on the right. A column (`col = other_col`), a sub-query (`col IN (SELECT ...)`) or an expression (`col = 7 + 1`) could evaluate to anything, so the condition is added. Comparisons are numeric (`9 > 10` is false). String values in the configuration are escaped for the dialect when a condition is added.
 
 ### Invalid configuration
 
-An unsupported `operation`, a malformed `BETWEEN`/`IN`, a missing `table_name`/`columns`, an empty `tables` list, or a duplicated table makes `verify_sql` return `allowed: false` with a message explaining the problem (the validation itself is `restriction_validation.validate_restrictions`, which raises `UnsupportedRestrictionError` / `ValueError`).
+An unsupported `operation`, a malformed `BETWEEN`/`IN`, a restriction without a plain column name (`"column": "a; DROP ..."`, `"t.a"`) or without a `value`, a value that is not a number, string or boolean, `columns` that are not a list of strings, a missing `table_name`/`columns`, an empty `tables` list, a duplicated table, or a `max_length`/`force_limit` that is not a positive integer makes `verify_sql` return `allowed: false` with a message explaining the problem (the validation itself is `restriction_validation.validate_restrictions`, which raises `UnsupportedRestrictionError` / `ValueError`).
 
 ## Column masking
 
