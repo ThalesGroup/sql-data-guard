@@ -3,12 +3,33 @@
 ## Unreleased
 
 ### Added
-- `suggest_config(sql, config, dialect)` and `merge_config(config, delta)`: compute the table/column additions a rejected query needs, and apply them to a copy of the configuration (see the manual, "Suggesting configuration changes"). `suggest_config` returns `None` when widening the allow-list cannot make the query acceptable, and its result is verified with `verify_sql` before it is returned.
-- Column masking: `column_masks` per table (`redact` policy). A masked column is returned as a constant under its own name when selected directly, and rejected in every other use.
-- `allowed_functions` config option: allow-list mode for functions (deny-list and `blocked_functions` still win). `blocked_functions` and `allowed_functions` must be lists of non-empty strings.
 - Database name options: a top-level `databases` allow-list (a table qualified with an unlisted database is rejected, and every `database_name` must be listed), `strict_database` (every table needs a `database_name` and unqualified table references are rejected) and `catalog_name` (top level or per table: the catalog/project of a 3-part name must match). See the manual, "Database names".
 - `validate_config(config)`: returns the configuration's problems as a list without verifying a query, to tell a bad configuration from a blocked query.
 - `suggest_config` adds missing databases to its delta (`"databases": [...]`) when the configuration has a `databases` list, and `merge_config` merges them. It returns `None` for a catalog mismatch or an unqualified table in strict mode.
+
+### Security
+- Restrictions are only satisfied by literal values. `account_id IN (SELECT 999)` counted as satisfying `account_id = 123` (the list of literals was empty), and `region = eu` counted as `region = 'eu'` when a derived table exposed a column named `eu`; both returned other tenants' rows. `account_id = 7 + 1` and `= -123` no longer count as `= 7` / `= 123` either.
+- `=`/`IN`/`BETWEEN` conditions are checked against the restriction's operation: with `score < 4`, `WHERE score = 4` (or `IN (3, 4)`, `BETWEEN 0 AND 4`) satisfied it and returned rows outside it. An `=` restriction with several `values` no longer accepts a `BETWEEN` range.
+- A CTE named like a configured table no longer gets that table's restrictions added outside its body, nor its columns in a `SELECT *` expansion (the `fixed` query referred to columns the CTE does not have). The body itself is still restricted.
+- A column qualified with a CTE/derived-table alias must be one that the alias exposes (`SELECT t.secret FROM (SELECT * FROM orders) t` is reported instead of producing a broken `fixed` query).
+- Table names with more than three parts are rejected. `proj.sales.evil.orders` was matched as `proj.sales.orders` (the extra part was ignored), so a query could read a table of another schema.
+
+### Fixed
+- Malformed configurations (`columns` that are not strings, `restrictions` that are not a list of objects, a restriction without a `column` or `value`, an `operation` that is not a string, a non-integer `max_length`, a non-string `database_name`...) return a clear configuration error instead of an internal error.
+- A parenthesized table in FROM (`FROM (t)`, `FROM (a JOIN b ON ...)`) is rejected with a clear error instead of an internal error.
+- `=` restrictions with several `values` add `col IN (...)` (they added invalid SQL `col = 1, 2`), with values escaped for the dialect.
+- `col < x` / `col > x` satisfy a `<` / `>` restriction with the same limit (the condition was added a second time), and `col <= 9` satisfies `< 10`.
+- `allowed_functions` mode rejected every query with `AND`/`OR` on sqlglot 30 (logical connectors are function nodes there), and `COLLATE` and MySQL `XOR` on every version. They are syntax, not function calls.
+
+### Breaking changes
+- Stricter configuration validation: a restriction's `column` must be a plain column name (no `;`, qualifier or expression), `value`s must be numbers, strings or booleans (not lists, `null`, NaN or infinity; `>`/`<`/`>=`/`<=`/`BETWEEN` need numbers, not booleans), `restrictions: null` and `max_length` that is not a positive integer are rejected. These configurations were accepted before, and either crashed or added conditions that could not work.
+
+## 0.2.0 - 2026-11-11
+
+### Added
+- `suggest_config(sql, config, dialect)` and `merge_config(config, delta)`: compute the table/column additions a rejected query needs, and apply them to a copy of the configuration (see the manual, "Suggesting configuration changes"). `suggest_config` returns `None` when widening the allow-list cannot make the query acceptable, and its result is verified with `verify_sql` before it is returned.
+- Column masking: `column_masks` per table (`redact` policy). A masked column is returned as a constant under its own name when selected directly, and rejected in every other use.
+- `allowed_functions` config option: allow-list mode for functions (deny-list and `blocked_functions` still win). `blocked_functions` and `allowed_functions` must be lists of non-empty strings.
 - `force_limit` config option: caps the rows returned by the outermost query (adds, clamps or replaces `LIMIT`, including `LIMIT ALL`/`NULL`/`-1`, expressions and `FETCH FIRST`).
 
 ### Security
@@ -27,19 +48,11 @@
 - Restriction values are escaped for the SQL dialect.
 - An outer query no longer inherits the WHERE of a nested CTE/subquery, so its own restrictions are injected.
 - A column selected inside a derived table/CTE no longer authorizes itself: aliases are registered after their body is verified, and visible only to the query that uses them.
-
-- Restrictions are only satisfied by literal values. `account_id IN (SELECT 999)` counted as satisfying `account_id = 123` (the list of literals was empty), and `region = eu` counted as `region = 'eu'` when a derived table exposed a column named `eu`; both returned other tenants' rows. `account_id = 7 + 1` and `= -123` no longer count as `= 7` / `= 123` either.
-- `=`/`IN`/`BETWEEN` conditions are checked against the restriction's operation: with `score < 4`, `WHERE score = 4` (or `IN (3, 4)`, `BETWEEN 0 AND 4`) satisfied it and returned rows outside it. An `=` restriction with several `values` no longer accepts a `BETWEEN` range.
-- A CTE named like a configured table no longer gets that table's restrictions added outside its body, nor its columns in a `SELECT *` expansion (the `fixed` query referred to columns the CTE does not have). The body itself is still restricted.
-- A column qualified with a CTE/derived-table alias must be one that the alias exposes (`SELECT t.secret FROM (SELECT * FROM orders) t` is reported instead of producing a broken `fixed` query).
-
-- Table names with more than three parts are rejected. `proj.sales.evil.orders` was matched as `proj.sales.orders` (the extra part was ignored), so a query could read a table of another schema.
 - `JOIN ... USING (col)` columns are checked against the allow-list (also on the joined table).
 - `SELECT ... INTO` and locking clauses (`FOR UPDATE`/`FOR SHARE`) are rejected.
 - More functions are blocked by default (`set_config`, `getenv`, `randomblob`, `zeroblob`, `version`, `current_setting`, `sqlite_version`, `UTL_*`/`DBMS_*` packages) and `@@` system variables.
 - `verify_sql` fails closed: any unexpected error (deep nesting, malformed config, non-string SQL) returns a rejection instead of raising.
 - Duplicate table entries in the config are rejected instead of silently widening the allow-list.
-
 - CTE names are scoped to the query that defines them: a CTE in one subquery no longer makes a real table of the same name usable elsewhere, and a non-recursive CTE cannot read the real table it shadows.
 - CTE bodies on set operations (`WITH ... SELECT ... UNION ...`) are verified, and data-modifying CTEs (`WITH x AS (DELETE ...)`) are rejected explicitly.
 
@@ -51,25 +64,15 @@
 - `IN` restrictions accept any non-empty list of numbers or strings.
 - An invalid restriction config returns an error result instead of raising `ValueError`.
 
-- Malformed configurations (`columns` that are not strings, `restrictions` that are not a list of objects, a restriction without a `column` or `value`, an `operation` that is not a string, a non-integer `max_length`, a non-string `database_name`...) return a clear configuration error instead of an internal error.
-- A parenthesized table in FROM (`FROM (t)`, `FROM (a JOIN b ON ...)`) is rejected with a clear error instead of an internal error.
-- `=` restrictions with several `values` add `col IN (...)` (they added invalid SQL `col = 1, 2`), with values escaped for the dialect.
-- `col < x` / `col > x` satisfy a `<` / `>` restriction with the same limit (the condition was added a second time), and `col <= 9` satisfies `< 10`.
-
-- `allowed_functions` mode rejected every query with `AND`/`OR` on sqlglot 30 (logical connectors are function nodes there), and `COLLATE` and MySQL `XOR` on every version. They are syntax, not function calls.
-
 ### Changed
 - MCP wrapper: no longer crashes on client responses and notifications (no `method`), server messages without an `id`, log lines that are not JSON, or output chunks that cut a line; validates its configuration at start with a clear message; documented in `docs/mcp-wrapper.md`. The postgres example now uses the `postgres` dialect.
 - Dify plugin 0.0.3: the `errors` variable is a sorted list with any library release, input is validated (the policy must be a JSON object, an empty dialect means the default), README and PRIVACY corrected, tests added. The plugin has no telemetry.
 - `sqlglot` is now bounded to `>=25.20.1,<31` (the range the test-suite passes on). CI tests the oldest and newest allowed versions, plus an informational job against the newest sqlglot ignoring the bound.
-- CI: full unit-suite on the Python 3.8-3.12 matrix and on pull requests, coverage (minimum 90%), ruff and mypy.
+- CI: the full unit suite on Python 3.10-3.14 and on pull requests, coverage (minimum 90%), ruff and mypy; lint and type-check run against the oldest supported sqlglot.
 - Release workflow retries the post-publish install instead of sleeping a fixed time, and also runs the bypass scenarios against the published package.
-
 - Docs: `docs/manual.md` is now a full configuration and behavior reference, the README examples show real output (and no longer claim a payload-detection module), `SECURITY.md` and `CONTRIBUTING.md` describe the actual policy and workflow.
-- CI: lint/type-check pinned to the oldest supported sqlglot; the Python compatibility matrix runs on `ubuntu-22.04` (older Python builds are not available on `ubuntu-latest`); workflow file typo fixed (`python-compatibility-test.yaml`).
-
+- The Python compatibility workflow file is renamed (`python-compatibility-test.yaml`).
 - The library logs through its own `sql_data_guard` logger instead of the root logger.
-
 - REST service: bodies that are not JSON objects and wrongly typed fields return 400 instead of 500; optional bearer token (`APP_API_TOKEN`), request size limit, and it binds to `127.0.0.1` unless `APP_HOST` says otherwise (the Docker image sets `0.0.0.0`). An unknown or invalid `dialect` is rejected with a clear error instead of an internal one.
 - The REST Docker image runs gunicorn (`gthread` workers, `WEB_CONCURRENCY`/`APP_THREADS`) instead of the Flask development server. gunicorn is installed in the image only; the library's dependencies are unchanged.
 - Docker images: built only after a successful PyPI release, from the released commit, pinned to the released library version, tagged with the version (they were tagged `main`/`latest`), and the REST image runs as a non-root user.
@@ -80,4 +83,3 @@
 - Queries that filter, join, group or order by columns outside the allow-list are now rejected.
 - `result["errors"]` is a sorted list instead of a set.
 - `<`, `>` and `<=` restrictions require a numeric value (as `>=` already did).
-- Stricter configuration validation: a restriction's `column` must be a plain column name (no `;`, qualifier or expression), `value`s must be numbers, strings or booleans (not lists, `null`, NaN or infinity; `>`/`<`/`>=`/`<=`/`BETWEEN` need numbers, not booleans), `restrictions: null` and `max_length` that is not a positive integer are rejected. These configurations were accepted before, and either crashed or added conditions that could not work.
