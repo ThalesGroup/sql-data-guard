@@ -96,7 +96,7 @@ def find_mask(col: expr.Column, scopes: List[List[expr.Table]], config: dict) ->
                 continue
             for config_table in config["tables"]:
                 if table_matches(table, config_table) and (
-                    col.table or any(names_equal(col, c) for c in config_table["columns"])
+                    col.table or any(names_equal(col, c) for c in config_table.get("columns", []))
                 ):
                     candidates.append(config_table)
         if candidates:

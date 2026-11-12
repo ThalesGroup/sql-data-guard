@@ -52,7 +52,7 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `tables[].table_name` | yes | Table name. |
 | `tables[].database_name` | no | Database/schema of the table. When set, a query that qualifies the table (`other_db.orders`) must use this name. An unqualified name (`orders`) also matches, and the database resolves it in its default schema, which may hold a different table with the same name: set `strict_database` to prevent that. See [Database names](#database-names). |
 | `tables[].catalog_name` | no | Catalog/project of the table, overriding the top-level `catalog_name`. |
-| `tables[].columns` | yes | Non-empty list of allowed columns. See [What is checked](#what-is-checked). |
+| `tables[].columns` | yes (no with `table_level_access`) | Non-empty list of allowed columns. See [What is checked](#what-is-checked) and [Table-level access](#table-level-access). |
 | `tables[].restrictions` | no | Row restrictions that must hold on every query of this table (see below). |
 | `tables[].column_masks` | no | Columns returned masked instead of in clear text. See [Column masking](#column-masking). |
 | `max_length` | no | Maximum SQL length in characters (default 10,000). Longer queries are rejected. |
@@ -61,8 +61,30 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `force_limit` | no | Maximum number of rows the outermost query may return. See [Row limit](#row-limit). |
 | `databases` | no | Allow-list of databases/schemas. See [Database names](#database-names). |
 | `strict_database` | no | `true` to require a database qualifier on every table. See [Database names](#database-names). |
+| `table_level_access` | no | `true` to let a table without `columns` be approved as a whole, so `SELECT *` is allowed on it. See [Table-level access](#table-level-access). |
 | `allow_metadata` | no | `true` to allow `SHOW` / `DESCRIBE` statements about the configured tables and databases. See [Metadata statements](#metadata-statements). |
 | `catalog_name` | no | Catalog/project of the tables (`catalog.schema.table`, `project.dataset.table`). See [Database names](#database-names). |
+
+### Table-level access
+
+By default access is granted per column: every table lists its `columns`, and `SELECT *` is expanded to them. With `"table_level_access": true`, `columns` becomes optional. A table **without** `columns` is approved as a whole: any of its columns may be used in any clause, and `SELECT *` / `t.*` are kept as written.
+
+```json
+{
+  "table_level_access": true,
+  "tables": [
+    {"table_name": "orders", "restrictions": [{"column": "region", "value": "eu"}]},
+    {"table_name": "users", "columns": ["id", "name", "ssn"],
+     "column_masks": [{"column": "ssn", "policy": "redact"}]}
+  ]
+}
+```
+
+- A table that lists `columns` stays column-level exactly as without the option: other columns are rejected and `SELECT *` is expanded to the listed ones. A masked table must list its `columns` (a mask needs them), so it is always column-level.
+- Everything else still applies to a table-level table: allowed tables, `databases`/`strict_database`/`catalog_name`, restrictions (also with `SELECT *`), `force_limit` and the function lists.
+- `*` is kept only when every source of the query is approved as a whole: table-level tables, or a CTE / derived table whose own `SELECT` kept a `*` over such tables. In a query that also reads a column-level table, `*` is rewritten table by table (`SELECT i.*, u.id, u.name, '****' AS ssn FROM items i JOIN users u ...`), so a table-level table never widens a column-level one.
+- Hidden columns of a table-level table are visible: list the columns of any table that has sensitive ones.
+- The option must be `true` or `false`; without it, a table without `columns` is an invalid configuration.
 
 ### Identifier case
 
@@ -209,7 +231,7 @@ verify_sql(sql, new_config, "postgres")       # allowed
 `suggest_config(sql, config, dialect=None)` returns:
 - `{"tables": [...]}` with only what is missing: new tables with the columns the query uses (in any clause, in sub-queries, CTEs and joins), and new columns for tables already configured. A table in a database/schema keeps its `database_name`. When the configuration has a `databases` list that lacks a database the query uses, the delta also has `"databases": [...]`.
 - `{"tables": []}` if the query needs nothing added.
-- `None` when adding to the allow-list cannot make the query acceptable. This is the case for anything that is not a plain read-only query (several statements, `INSERT`/`DROP`/..., `SELECT INTO`), a blocked function, a column that cannot be attributed to one table (an unqualified column over several tables), a table the query uses without naming any of its columns (`SELECT *`, `COUNT(*)`), because a configured table must list its columns, a table of another catalog than `catalog_name`, and an unqualified table in strict mode.
+- `None` when adding to the allow-list cannot make the query acceptable. This is the case for anything that is not a plain read-only query (several statements, `INSERT`/`DROP`/..., `SELECT INTO`), a blocked function, a column that cannot be attributed to one table (an unqualified column over several tables), a table the query uses without naming any of its columns (`SELECT *`, `COUNT(*)`), because a configured table must list its columns (with `table_level_access` the table is suggested without `columns` instead), a table of another catalog than `catalog_name`, and an unqualified table in strict mode.
 
 The suggestion is checked before it is returned: `verify_sql` accepts the query with `merge_config(config, delta)`, and no table or column of the query is left outside the allow-list. Only `tables`, their `columns` and `databases` are ever suggested; restrictions, masks, function lists, `force_limit`, catalogs and the database flags are never changed, and a rejection for one of those reasons gives `None`. `suggest_config` never raises.
 

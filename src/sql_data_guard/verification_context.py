@@ -109,6 +109,11 @@ class VerificationContext:
         self._source_scopes.pop()
 
     @property
+    def current_sources(self) -> Set[str]:
+        """Names of the dynamic tables in the FROM/JOIN of the query being verified (not its parents)."""
+        return set(self._source_scopes[-1]) if self._source_scopes else set()
+
+    @property
     def visible_dynamic_tables(self) -> Dict[str, Set[str]]:
         """
         Dynamic tables visible from the query being verified: those in its own FROM/JOIN and

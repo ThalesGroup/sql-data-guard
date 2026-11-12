@@ -39,11 +39,16 @@ def _find_entry(tables: List[dict], table_name: str, database_name: Optional[str
 
 
 def _has_column(entry: dict, column: str) -> bool:
+    if "columns" not in entry:
+        return True  # approved as a whole (table_level_access)
     return str(column).lower() in {str(c).lower() for c in entry["columns"]}
 
 
-def validate_delta(delta: dict) -> None:
-    """Raises ValueError unless ``delta`` has the shape produced by ``suggest_config``."""
+def validate_delta(delta: dict, table_level: bool = False) -> None:
+    """
+    Raises ValueError unless ``delta`` has the shape produced by ``suggest_config``. A table
+    without ``columns`` is only valid with ``table_level`` (the config sets ``table_level_access``).
+    """
     if (
         not isinstance(delta, dict)
         or "tables" not in delta
@@ -66,8 +71,10 @@ def validate_delta(delta: dict) -> None:
         if db is not None and not isinstance(db, str):
             raise ValueError("'database_name' must be a string.")
         columns = table.get("columns")
+        if table_level and "columns" not in table:
+            continue  # a table approved as a whole (table_level_access)
         if not isinstance(columns, list) or not columns or not all(isinstance(c, str) and c for c in columns):
-            raise ValueError("Each delta table must have a non-empty 'columns' list of names.")
+            raise ValueError("A delta table's 'columns' must be a non-empty list of names.")
 
 
 def merge_config(config: dict, delta: dict) -> dict:
@@ -80,7 +87,7 @@ def merge_config(config: dict, delta: dict) -> dict:
     configuration changes, and the arguments are not modified. Raises ValueError if ``delta`` is
     malformed.
     """
-    validate_delta(delta)
+    validate_delta(delta, config.get("table_level_access") is True)
     merged = copy.deepcopy(config)
     if delta.get("databases"):
         databases = merged.setdefault("databases", [])
@@ -101,7 +108,7 @@ def merge_config(config: dict, delta: dict) -> dict:
         if existing is None:
             tables.append(copy.deepcopy(table))
             continue
-        for column in table["columns"]:
+        for column in table.get("columns", []):
             if not _has_column(existing, column):
                 existing["columns"].append(column)
     return merged
@@ -121,7 +128,8 @@ def suggest_config(sql: str, config: dict, dialect: Optional[str] = None) -> Opt
       a column that cannot be attributed to one table, a table of another catalog, an
       unqualified table in strict mode, ...);
     - it needs a table without naming any column (``SELECT *`` or ``COUNT(*)`` on a table the
-      configuration does not know), because a configured table must list its columns.
+      configuration does not know), because a configured table must list its columns. With
+      ``table_level_access`` the table is suggested without ``columns`` instead.
 
     The suggestion is always checked: ``verify_sql`` on ``merge_config(config, delta)`` accepts
     the query (allowed, or fixable). It never raises.
@@ -137,6 +145,7 @@ def _suggest(sql: str, config: dict, dialect: Optional[str]) -> Optional[dict]:
     if not isinstance(config, dict) or not isinstance(config.get("tables"), list):
         return None
     working = copy.deepcopy(config)
+    table_level = working.get("table_level_access") is True
     tables = working["tables"]
     delta_tables: dict = {}  # identity -> delta table
     delta_databases: List[str] = []
@@ -144,7 +153,7 @@ def _suggest(sql: str, config: dict, dialect: Optional[str]) -> Optional[dict]:
     def delta_for(entry: dict) -> dict:
         key = _identity(entry["table_name"], entry.get("database_name"))
         if key not in delta_tables:
-            table = {"table_name": entry["table_name"], "columns": []}
+            table = {"table_name": entry["table_name"]}
             if entry.get("database_name"):
                 table["database_name"] = entry["database_name"]
             delta_tables[key] = table
@@ -172,8 +181,9 @@ def _suggest(sql: str, config: dict, dialect: Optional[str]) -> Optional[dict]:
                     entry = {
                         "table_name": v["table_name"],
                         **({"database_name": v["database_name"]} if v["database_name"] else {}),
-                        "columns": [_PLACEHOLDER_COLUMN],
                     }
+                    if not table_level:
+                        entry["columns"] = [_PLACEHOLDER_COLUMN]
                     tables.append(entry)
                     delta_for(entry)  # listed even if no real column is found (rejected below)
                     progress = True
@@ -182,15 +192,15 @@ def _suggest(sql: str, config: dict, dialect: Optional[str]) -> Optional[dict]:
                     return None
                 if not _has_column(entry, v["column"]):
                     entry["columns"].append(v["column"])
-                    delta_for(entry)["columns"].append(v["column"])
+                    delta_for(entry).setdefault("columns", []).append(v["column"])
                     progress = True
         if not progress:
             break
     else:
         return None  # did not settle
 
-    # a table can only be configured with columns: drop what was found for none
-    result = [t for t in delta_tables.values() if t["columns"]]
+    # a table can only be configured with columns (unless table_level_access): drop what was found for none
+    result = [t for t in delta_tables.values() if t.get("columns") or table_level]
     if len(result) != len(delta_tables):
         return None
     delta: dict = {"tables": result}

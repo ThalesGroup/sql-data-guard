@@ -19,7 +19,8 @@ from .verification_utils import (
     split_to_expressions,
     find_direct,
     table_matches,
-    column_in,
+    column_allowed,
+    WILDCARD,
     same_name,
     get_where,
     get_from,
@@ -626,23 +627,37 @@ def _verify_select_clause_element(
             return False
         _apply_mask(e, from_tables, context)
     elif isinstance(e, expr.Star):
+        if _star_allowed(from_tables, context):
+            return True  # table_level_access: every source is approved as a whole
         context.add_error("SELECT * is not allowed", True, 0.1)
+        parent = e.parent
+        # With a table-level table in the query, `*` is replaced table by table: `t.*` for a
+        # table approved as a whole, qualified columns for the others (the result stays unambiguous).
+        mixed = any(
+            "columns" not in config_t and table_matches(t, config_t)
+            for t in from_tables
+            for config_t in context.config["tables"]
+        )
         for t in from_tables:
             if not t.db and t.name in context.cte_names:
                 continue  # a CTE, even one named like a configured table
             for config_t in context.config["tables"]:
-                if table_matches(t, config_t):
-                    parent = e.parent
-                    masks = table_masks(config_t)
-                    for c in config_t["columns"]:
-                        if parent is not None:
+                if table_matches(t, config_t) and parent is not None:
+                    qualifier = t.alias_or_name if mixed else ""
+                    if "columns" not in config_t:
+                        items = [expr.Column(this=expr.Star(), table=expr.to_identifier(qualifier))]
+                    else:
+                        masks = table_masks(config_t)
+                        items = []
+                        for c in config_t["columns"]:
                             # a masked column is expanded to its mask, not to the real column
-                            item = (
-                                masked_select_item(masks[c.lower()], c)
-                                if c.lower() in masks
-                                else sqlglot.parse_one(c)
-                            )
-                            parent.set("expressions", parent.expressions + [item])
+                            if c.lower() in masks:
+                                items.append(masked_select_item(masks[c.lower()], c))
+                            elif mixed:
+                                items.append(expr.column(c, table=qualifier))
+                            else:
+                                items.append(sqlglot.parse_one(c))
+                    parent.set("expressions", parent.expressions + items)
         return False
     elif isinstance(e, expr.Tuple):
         result = True
@@ -658,6 +673,25 @@ def _verify_select_clause_element(
             if not _verify_select_clause_element(from_tables, context, func_args):
                 return False
     return True
+
+
+def _star_allowed(from_tables: List[expr.Table], context: VerificationContext) -> bool:
+    """
+    True if `*` can be kept as written: every source of the query is approved as a whole. That is
+    a configured table without `columns` (only possible with `table_level_access`), or a CTE /
+    derived table whose own SELECT kept a `*` for such tables. With any other source, a column
+    list is needed to expand `*` and it is rewritten to the allowed columns.
+    """
+    sources = context.current_sources
+    real = [t for t in from_tables if t.db or t.name not in context.cte_names]
+    if not real and not sources:
+        return False
+    for t in real:
+        matching = [c for c in context.config["tables"] if table_matches(t, c)]
+        if not matching or any("columns" in c for c in matching):
+            return False
+    dynamic = context.dynamic_tables
+    return all(WILDCARD in dynamic.get(name, ()) for name in sources)
 
 
 def _apply_mask(col: expr.Column, from_tables: List[expr.Table], context: VerificationContext):
@@ -716,7 +750,7 @@ def _verify_col(
             ]
             if matches:
                 if any(
-                    column_in(col, config_t["columns"])
+                    column_allowed(col, config_t)
                     for t in matches
                     for config_t in context.config["tables"]
                     if table_matches(t, config_t)
@@ -730,19 +764,21 @@ def _verify_col(
         dynamic = [c for n, c in visible.items() if same_name(n, col.table)]
         if dynamic:
             if col.is_star or any(
-                same_name(col.name, c) for cols in dynamic for c in cols
+                c == WILDCARD or same_name(col.name, c) for cols in dynamic for c in cols
             ):
                 return True
             return _reject_col(col, context, in_select, from_tables=from_tables)
     if (
         (
             col.table == ""
-            and col.name.lower()
-            in {c.lower() for t_cols in visible.values() for c in t_cols}
+            and (
+                col.name.lower() in {c.lower() for t_cols in visible.values() for c in t_cols}
+                or any(WILDCARD in t_cols for t_cols in visible.values())
+            )
         )
         or (
             any(
-                column_in(col, config_t["columns"])
+                column_allowed(col, config_t)
                 for config_t in context.config["tables"]
                 for t in from_tables
                 if table_matches(t, config_t)
@@ -846,7 +882,7 @@ def _verify_using_column(
     if isinstance(right, expr.Table):
         configured = [c for c in context.config["tables"] if table_matches(right, c)]
         if configured and not any(
-            column_in(expr.column(name), c["columns"]) for c in configured
+            column_allowed(expr.column(name), c) for c in configured
         ):
             _reject_col(expr.column(name), context, False, table=right)
             return

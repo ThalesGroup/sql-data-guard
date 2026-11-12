@@ -45,7 +45,9 @@ def _is_column_name(name) -> bool:
     return isinstance(parsed, expr.Column) and not parsed.table
 
 
-def _validate_columns(table: dict):
+def _validate_columns(config: dict, table: dict):
+    if "columns" not in table and config.get("table_level_access"):
+        return  # the table is approved as a whole
     columns = table.get("columns")
     if not isinstance(columns, list) or not columns:
         raise ValueError(
@@ -95,7 +97,7 @@ def _non_empty_string(value) -> bool:
 
 def _validate_database_options(config: dict):
     """`databases`, `strict_database` and `catalog_name` (top level and per table)."""
-    for key in ("strict_database", "allow_metadata"):
+    for key in ("strict_database", "allow_metadata", "table_level_access"):
         if not isinstance(config.get(key, False), bool):
             raise ValueError(
                 f"Invalid '{key}'. Expected true or false. Received: {config[key]!r}"
@@ -210,7 +212,7 @@ def validate_restrictions(config: dict):
                 f"Table '{table['table_name']}' is defined more than once."
             )
         seen.add(key)
-        _validate_columns(table)
+        _validate_columns(config, table)
 
         restrictions = table.get("restrictions", [])
         if not isinstance(restrictions, list):
