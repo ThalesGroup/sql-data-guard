@@ -64,3 +64,25 @@ def test_recursive_cte_cannot_authorize_forbidden_column():
     )
     result = _verify(sql)
     assert not result["allowed"], result
+
+
+def test_cte_named_like_a_table_does_not_get_its_restriction():
+    # the restriction applies inside the CTE body, where the real table is read; the CTE itself
+    # has no account_id column, so adding the condition outside would break the query
+    sql = "WITH orders AS (SELECT id FROM orders WHERE account_id = 123) SELECT id FROM orders"
+    assert _verify(sql) == {"allowed": True, "errors": [], "fixed": None, "risk": 0}
+
+
+def test_cte_named_like_a_table_still_restricts_its_body():
+    result = _verify("WITH orders AS (SELECT id FROM orders) SELECT id FROM orders")
+    assert result["fixed"] == (
+        "WITH orders AS (SELECT id FROM orders WHERE account_id = 123) SELECT id FROM orders"
+    )
+
+
+def test_star_over_a_cte_named_like_a_table_is_not_expanded_to_the_table_columns():
+    result = _verify(
+        "WITH orders AS (SELECT id FROM orders WHERE account_id = 123) SELECT * FROM orders"
+    )
+    # not expanded to id, product_name, account_id (the CTE only has id): nothing is left
+    assert not result["allowed"] and result["fixed"] is None, result

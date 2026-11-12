@@ -46,9 +46,13 @@ def table_matches(table: expr.Table, config_table: dict) -> bool:
     Checks if a table reference in a query refers to a table in the configuration.
 
     The table name must match. If the query qualifies the table with a schema/database
-    and the configuration defines a database_name, they must match too.
+    and the configuration defines a database_name, they must match too; the same for the
+    catalog/project of a 3-part name (`catalog.schema.table`) and catalog_name.
     """
     if not names_equal(table, config_table["table_name"]):
+        return False
+    catalog_name = config_table.get("catalog_name")
+    if table.catalog and catalog_name and table.catalog.lower() != catalog_name.lower():
         return False
     database_name = config_table.get("database_name")
     if table.db and database_name:

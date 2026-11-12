@@ -2,8 +2,9 @@
 Suggesting and applying allow-list changes to a configuration.
 
 ``suggest_config`` answers "what would this query need to be allowed?" and ``merge_config``
-applies such an answer to a configuration. Both only deal with the table/column allow-list
-(``tables``); restrictions, masks, function lists and limits are never touched.
+applies such an answer to a configuration. Both only deal with the allow-lists (``tables`` and
+their columns, and ``databases``); restrictions, masks, function lists, limits and catalogs are
+never touched.
 """
 
 import copy
@@ -43,8 +44,19 @@ def _has_column(entry: dict, column: str) -> bool:
 
 def validate_delta(delta: dict) -> None:
     """Raises ValueError unless ``delta`` has the shape produced by ``suggest_config``."""
-    if not isinstance(delta, dict) or set(delta) != {"tables"} or not isinstance(delta["tables"], list):
-        raise ValueError("A config delta must be an object with a single 'tables' list.")
+    if (
+        not isinstance(delta, dict)
+        or "tables" not in delta
+        or not set(delta) <= {"tables", "databases"}
+        or not isinstance(delta["tables"], list)
+    ):
+        raise ValueError(
+            "A config delta must be an object with a 'tables' list and optionally a 'databases' list."
+        )
+    if "databases" in delta:
+        databases = delta["databases"]
+        if not isinstance(databases, list) or not all(isinstance(d, str) and d for d in databases):
+            raise ValueError("'databases' must be a list of database names.")
     for table in delta["tables"]:
         if not isinstance(table, dict) or not set(table) <= _DELTA_TABLE_KEYS:
             raise ValueError(f"A delta table may only have the keys {sorted(_DELTA_TABLE_KEYS)}.")
@@ -60,14 +72,21 @@ def validate_delta(delta: dict) -> None:
 
 def merge_config(config: dict, delta: dict) -> dict:
     """
-    Returns a copy of ``config`` with the tables and columns of ``delta`` added.
+    Returns a copy of ``config`` with the tables, columns and databases of ``delta`` added.
 
     A delta table with the same name (and database) as a configured one adds its missing columns
-    to it; any other delta table is appended. Nothing else in the configuration changes, and the
-    arguments are not modified. Raises ValueError if ``delta`` is malformed.
+    to it; any other delta table is appended. Delta databases missing from ``databases`` are
+    appended (the list is created if the configuration has none). Nothing else in the
+    configuration changes, and the arguments are not modified. Raises ValueError if ``delta`` is
+    malformed.
     """
     validate_delta(delta)
     merged = copy.deepcopy(config)
+    if delta.get("databases"):
+        databases = merged.setdefault("databases", [])
+        for database in delta["databases"]:
+            if database.lower() not in {d.lower() for d in databases}:
+                databases.append(database)
     tables = merged.setdefault("tables", [])
     for table in delta["tables"]:
         existing = next(
@@ -92,12 +111,15 @@ def suggest_config(sql: str, config: dict, dialect: Optional[str] = None) -> Opt
     """
     Suggests the smallest allow-list addition that lets ``sql`` run as written.
 
-    Returns ``{"tables": [{"table_name", "database_name"?, "columns": [...]}, ...]}``, to be
-    applied with ``merge_config``; ``{"tables": []}`` if the query needs nothing added. Returns
-    None when widening the allow-list cannot make the query acceptable:
+    Returns ``{"tables": [{"table_name", "database_name"?, "columns": [...]}, ...]}``, plus
+    ``"databases": [...]`` when the configuration has a ``databases`` allow-list that lacks a
+    database the query uses, to be applied with ``merge_config``; ``{"tables": []}`` if the
+    query needs nothing added. Returns None when widening the allow-list cannot make the query
+    acceptable:
 
     - the query is rejected for another reason (DML/DDL, several statements, a blocked function,
-      a column that cannot be attributed to one table, ...);
+      a column that cannot be attributed to one table, a table of another catalog, an
+      unqualified table in strict mode, ...);
     - it needs a table without naming any column (``SELECT *`` or ``COUNT(*)`` on a table the
       configuration does not know), because a configured table must list its columns.
 
@@ -117,6 +139,7 @@ def _suggest(sql: str, config: dict, dialect: Optional[str]) -> Optional[dict]:
     working = copy.deepcopy(config)
     tables = working["tables"]
     delta_tables: dict = {}  # identity -> delta table
+    delta_databases: List[str] = []
 
     def delta_for(entry: dict) -> dict:
         key = _identity(entry["table_name"], entry.get("database_name"))
@@ -132,6 +155,15 @@ def _suggest(sql: str, config: dict, dialect: Optional[str]) -> Optional[dict]:
         _verify_sql(sql, working, dialect, violations)
         progress = False
         for v in violations:
+            if v["type"] == "database":
+                known = {d.lower() for d in working["databases"]}
+                if v["database_name"].lower() not in known:
+                    working["databases"].append(v["database_name"])
+                    delta_databases.append(v["database_name"])
+                    progress = True
+                continue
+            if v["type"] not in ("table", "column"):
+                return None  # e.g. a catalog mismatch: not an allow-list problem
             if v["table_name"] is None:
                 return None  # a column that belongs to no single table: nothing to suggest
             entry = _find_entry(tables, v["table_name"], v["database_name"])
@@ -161,7 +193,9 @@ def _suggest(sql: str, config: dict, dialect: Optional[str]) -> Optional[dict]:
     result = [t for t in delta_tables.values() if t["columns"]]
     if len(result) != len(delta_tables):
         return None
-    delta = {"tables": result}
+    delta: dict = {"tables": result}
+    if delta_databases:
+        delta["databases"] = delta_databases
     merged = merge_config(config, delta)
     verdict = _verify_sql(sql, merged, dialect)
     if not verdict["allowed"] and verdict["fixed"] is None:

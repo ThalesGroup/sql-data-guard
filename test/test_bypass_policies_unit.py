@@ -2,7 +2,7 @@
 
 Companion of test_bypass_unit.py, with another schema and the options that file does not use:
 IN / BETWEEN / comparison restrictions (two on one table), column masks, `database_name`
-(an attached `hr` schema, with `qualify_tables`), `force_limit`, `allowed_functions` and `blocked_functions`.
+(an attached `hr` schema, and `strict_database`), `force_limit`, `allowed_functions` and `blocked_functions`.
 
 Every query the guard approves (or the `fixed` rewrite it returns) is executed on the engine of
 its dialect, on two databases ("a" and "b") that hold the same allowed data and differ only in
@@ -55,8 +55,6 @@ POLICY = {
         },
     ],
     "force_limit": FORCE_LIMIT,
-    # unqualified `reviews` would otherwise be resolved in the default schema (main.reviews)
-    "qualify_tables": True,
 }
 
 ALLOWED_FUNCTIONS = ["count", "sum", "max", "lower", "coalesce"]
@@ -345,12 +343,9 @@ RESTRICTION_OPS = [
     "SELECT r.title FROM hr.reviews r JOIN hr.reviews s ON s.id = r.id WHERE r.score < 4",
     'SELECT title FROM "hr"."reviews"',
     "SELECT title FROM HR.REVIEWS WHERE score < 4",
-    # same table name in the default schema
+    # same table name in the default schema, qualified (unqualified: see test_strict_database)
     "SELECT title FROM main.reviews",
     "SELECT title FROM main.reviews WHERE score < 4",
-    "SELECT title FROM reviews WHERE score < 4",
-    "SELECT id, title FROM reviews",
-    "SELECT title FROM hr.reviews WHERE score < 4 UNION SELECT title FROM reviews WHERE score < 4",
 ]
 
 
@@ -576,6 +571,58 @@ def test_function_not_blocked(dbs, engine):
 
 
 # --------------------------------------------------------------------------- 6
+# Without strict_database an unqualified `reviews` matches hr.reviews, and the database reads
+# main.reviews (documented). With it, every table needs its database and the query must say it.
+def _strict_policy():
+    config = copy.deepcopy(POLICY)
+    for table in config["tables"]:
+        table.setdefault("database_name", "main")
+    config.update(databases=["main", "hr"], strict_database=True)
+    return config
+
+
+STRICT_POLICY = _strict_policy()
+
+STRICT_DATABASE = [
+    "SELECT title FROM reviews WHERE score < 4",
+    "SELECT id, title FROM reviews",
+    "SELECT title FROM hr.reviews WHERE score < 4 UNION SELECT title FROM reviews WHERE score < 4",
+    "SELECT title FROM hr.reviews WHERE id IN (SELECT id FROM reviews)",
+    "SELECT title FROM (SELECT title FROM reviews) t",
+    "SELECT r.title FROM hr.reviews r JOIN reviews x ON x.id = r.id WHERE r.score < 4",
+    "SELECT title FROM main.reviews",
+    "SELECT title FROM temp.reviews",
+    "SELECT id, name FROM employees",
+    "SELECT id FROM main.employees e JOIN audit_log a ON 1 = 1",
+    "SELECT title FROM hr.main.reviews",
+]
+
+
+@pytest.mark.parametrize("sql", _params(STRICT_DATABASE))
+def test_strict_database(dbs, engine, sql):
+    check(dbs, engine, sql, STRICT_POLICY)
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        ("SELECT title FROM hr.reviews WHERE score < 4 LIMIT 5", [("good",), ("fine",)]),
+        ("SELECT id, name FROM main.employees", [(1, "ann"), (2, "bob")]),
+        (
+            "WITH reviews AS (SELECT title FROM hr.reviews WHERE score < 4) "
+            "SELECT title FROM reviews LIMIT 5",
+            [("good",), ("fine",)],
+        ),
+    ],
+)
+def test_strict_database_positive(dbs, engine, sql, expected):
+    result = check(dbs, engine, sql, STRICT_POLICY)
+    to_run = sql if result["allowed"] else result["fixed"]
+    assert to_run, f"legitimate query rejected: {result}"
+    assert [tuple(r) for r in dbs[engine, "a"].execute(to_run).fetchall()] == expected
+
+
+# --------------------------------------------------------------------------- 7
 def _table(name, **changes):
     table = copy.deepcopy(next(t for t in POLICY["tables"] if t["table_name"] == name))
     table.update(changes)
@@ -618,7 +665,9 @@ INVALID_CONFIGS = [
     _with(allowed_functions=[1]),
     _with(allowed_functions=[""]),
     _with(blocked_functions={"lower": True}),
-    _with(qualify_tables="yes"),
+    _with(strict_database="yes"),
+    _with(strict_database=True),  # employees and invoices have no database_name
+    _with(databases=["main"]),  # hr.reviews is not in it
     # tables
     _replace_table("reviews", database_name=5),
     _replace_table("reviews", table_name=None),

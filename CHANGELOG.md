@@ -6,7 +6,9 @@
 - `suggest_config(sql, config, dialect)` and `merge_config(config, delta)`: compute the table/column additions a rejected query needs, and apply them to a copy of the configuration (see the manual, "Suggesting configuration changes"). `suggest_config` returns `None` when widening the allow-list cannot make the query acceptable, and its result is verified with `verify_sql` before it is returned.
 - Column masking: `column_masks` per table (`redact` policy). A masked column is returned as a constant under its own name when selected directly, and rejected in every other use.
 - `allowed_functions` config option: allow-list mode for functions (deny-list and `blocked_functions` still win). `blocked_functions` and `allowed_functions` must be lists of non-empty strings.
-- `qualify_tables` config option: adds the configured `database_name` to unqualified table names (`FROM reviews` is fixed to `FROM hr.reviews`). Without it, the database resolves an unqualified name in its default schema, which can hold another table with the same name and other data. Off by default.
+- Database name options: a top-level `databases` allow-list (a table qualified with an unlisted database is rejected, and every `database_name` must be listed), `strict_database` (every table needs a `database_name` and unqualified table references are rejected) and `catalog_name` (top level or per table: the catalog/project of a 3-part name must match). See the manual, "Database names".
+- `validate_config(config)`: returns the configuration's problems as a list without verifying a query, to tell a bad configuration from a blocked query.
+- `suggest_config` adds missing databases to its delta (`"databases": [...]`) when the configuration has a `databases` list, and `merge_config` merges them. It returns `None` for a catalog mismatch or an unqualified table in strict mode.
 - `force_limit` config option: caps the rows returned by the outermost query (adds, clamps or replaces `LIMIT`, including `LIMIT ALL`/`NULL`/`-1`, expressions and `FETCH FIRST`).
 
 ### Security
@@ -28,8 +30,10 @@
 
 - Restrictions are only satisfied by literal values. `account_id IN (SELECT 999)` counted as satisfying `account_id = 123` (the list of literals was empty), and `region = eu` counted as `region = 'eu'` when a derived table exposed a column named `eu`; both returned other tenants' rows. `account_id = 7 + 1` and `= -123` no longer count as `= 7` / `= 123` either.
 - `=`/`IN`/`BETWEEN` conditions are checked against the restriction's operation: with `score < 4`, `WHERE score = 4` (or `IN (3, 4)`, `BETWEEN 0 AND 4`) satisfied it and returned rows outside it. An `=` restriction with several `values` no longer accepts a `BETWEEN` range.
+- A CTE named like a configured table no longer gets that table's restrictions added outside its body, nor its columns in a `SELECT *` expansion (the `fixed` query referred to columns the CTE does not have). The body itself is still restricted.
 - A column qualified with a CTE/derived-table alias must be one that the alias exposes (`SELECT t.secret FROM (SELECT * FROM orders) t` is reported instead of producing a broken `fixed` query).
 
+- Table names with more than three parts are rejected. `proj.sales.evil.orders` was matched as `proj.sales.orders` (the extra part was ignored), so a query could read a table of another schema.
 - `JOIN ... USING (col)` columns are checked against the allow-list (also on the joined table).
 - `SELECT ... INTO` and locking clauses (`FOR UPDATE`/`FOR SHARE`) are rejected.
 - More functions are blocked by default (`set_config`, `getenv`, `randomblob`, `zeroblob`, `version`, `current_setting`, `sqlite_version`, `UTL_*`/`DBMS_*` packages) and `@@` system variables.
@@ -51,6 +55,8 @@
 - A parenthesized table in FROM (`FROM (t)`, `FROM (a JOIN b ON ...)`) is rejected with a clear error instead of an internal error.
 - `=` restrictions with several `values` add `col IN (...)` (they added invalid SQL `col = 1, 2`), with values escaped for the dialect.
 - `col < x` / `col > x` satisfy a `<` / `>` restriction with the same limit (the condition was added a second time), and `col <= 9` satisfies `< 10`.
+
+- `allowed_functions` mode rejected every query with `AND`/`OR` on sqlglot 30 (logical connectors are function nodes there), and `COLLATE` and MySQL `XOR` on every version. They are syntax, not function calls.
 
 ### Changed
 - MCP wrapper: no longer crashes on client responses and notifications (no `method`), server messages without an `id`, log lines that are not JSON, or output chunks that cut a line; validates its configuration at start with a clear message; documented in `docs/mcp-wrapper.md`. The postgres example now uses the `postgres` dialect.

@@ -89,6 +89,47 @@ def _validate_restriction_shape(restriction, table_name: str):
             )
 
 
+def _non_empty_string(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _validate_database_options(config: dict):
+    """`databases`, `strict_database` and `catalog_name` (top level and per table)."""
+    if not isinstance(config.get("strict_database", False), bool):
+        raise ValueError(
+            "Invalid 'strict_database'. Expected true or false. "
+            f"Received: {config['strict_database']!r}"
+        )
+    if "catalog_name" in config and not _non_empty_string(config["catalog_name"]):
+        raise ValueError(
+            f"Invalid 'catalog_name'. Expected a non-empty string. Received: {config['catalog_name']!r}"
+        )
+    if "databases" in config:
+        databases = config["databases"]
+        if not isinstance(databases, list) or not all(
+            _non_empty_string(d) for d in databases
+        ):
+            raise ValueError(
+                f"Invalid 'databases'. Expected a list of database names. Received: {databases!r}"
+            )
+
+
+def _validate_table_database(config: dict, table: dict):
+    name = table["table_name"]
+    if "catalog_name" in table and not _non_empty_string(table["catalog_name"]):
+        raise ValueError(f"The 'catalog_name' of table '{name}' must be a non-empty string.")
+    database_name = table.get("database_name")
+    if config.get("strict_database") and not _non_empty_string(database_name):
+        raise ValueError(
+            f"Table '{name}' must have a 'database_name' when 'strict_database' is set."
+        )
+    if database_name and "databases" in config:
+        if database_name.lower() not in {d.lower() for d in config["databases"]}:
+            raise ValueError(
+                f"The database '{database_name}' of table '{name}' is not in 'databases'."
+            )
+
+
 def _validate_force_limit(config: dict):
     if "force_limit" not in config:
         return
@@ -132,10 +173,7 @@ def validate_restrictions(config: dict):
         "IN",
     ]  # Allowed operations
     _validate_max_length(config)
-    if not isinstance(config.get("qualify_tables", False), bool):
-        raise ValueError(
-            f"Invalid 'qualify_tables'. Expected true or false. Received: {config['qualify_tables']!r}"
-        )
+    _validate_database_options(config)
     _validate_force_limit(config)
     _validate_function_list(config, "blocked_functions")
     _validate_function_list(config, "allowed_functions")
@@ -161,7 +199,12 @@ def validate_restrictions(config: dict):
             raise ValueError(
                 f"The 'database_name' of table '{table['table_name']}' must be a string."
             )
-        key = (table["table_name"].lower(), (database_name or "").lower())
+        _validate_table_database(config, table)
+        key = (
+            table["table_name"].lower(),
+            (database_name or "").lower(),
+            str(table.get("catalog_name") or "").lower(),
+        )
         if key in seen:
             raise ValueError(
                 f"Table '{table['table_name']}' is defined more than once."

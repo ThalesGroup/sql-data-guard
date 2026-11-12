@@ -53,6 +53,45 @@ def verify_sql(sql: str, config: dict, dialect: Optional[str] = None) -> dict:
         }
 
 
+def validate_config(config: dict) -> List[str]:
+    """
+    Validates a configuration without verifying a query.
+
+    Returns the problems found (an empty list when the configuration is valid). verify_sql
+    reports the same problems as a rejection, so this tells a bad configuration apart from a
+    blocked query. Validation stops at the first problem, so the list has at most one entry
+    for now. Never raises.
+    """
+    try:
+        if not config or not isinstance(config, dict) or "tables" not in config:
+            return [
+                "Invalid configuration provided. The configuration must include 'tables'."
+            ]
+        validate_restrictions(config)
+    except (UnsupportedRestrictionError, ValueError) as e:
+        return [str(e)]
+    except Exception as e:  # noqa: BLE001 - a malformed config must not raise
+        return [f"Invalid configuration ({type(e).__name__})"]
+    return []
+
+
+def _effective_config(config: dict) -> dict:
+    """
+    The configuration as the verification uses it: a copy in which each table has the top-level
+    catalog_name unless it sets its own. The caller's configuration is not modified.
+    """
+    catalog = config.get("catalog_name")
+    if not catalog:
+        return config
+    return {
+        **config,
+        "tables": [
+            t if t.get("catalog_name") else {**t, "catalog_name": catalog}
+            for t in config["tables"]
+        ],
+    }
+
+
 def _verify_sql(
     sql: str,
     config: dict,
@@ -75,21 +114,10 @@ def _verify_sql(
             sqlglot.Dialect.get_or_raise(dialect)
         except ValueError as e:
             return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
-    # Check if the config is empty or invalid (e.g., no 'tables' key)
-    if not config or not isinstance(config, dict) or "tables" not in config:
-        return {
-            "allowed": False,
-            "errors": [
-                "Invalid configuration provided. The configuration must include 'tables'."
-            ],
-            "fixed": None,
-            "risk": 1.0,
-        }
-    # First, validate the configuration (restrictions, limits, masks)
-    try:
-        validate_restrictions(config)
-    except (UnsupportedRestrictionError, ValueError) as e:
-        return {"allowed": False, "errors": [str(e)], "fixed": None, "risk": 1.0}
+    config_errors = validate_config(config)
+    if config_errors:
+        return {"allowed": False, "errors": config_errors, "fixed": None, "risk": 1.0}
+    config = _effective_config(config)
 
     max_length = config.get("max_length", _DEFAULT_MAX_LENGTH)
     if len(sql) > max_length:
@@ -188,8 +216,17 @@ _DEFAULT_BLOCKED_FUNCTIONS = frozenset(
 _BLOCKED_FUNCTION_PREFIXES = ("utl_", "dbms_", "sys.", "xp_", "sp_")
 
 
-# sqlglot models these as functions, but they are syntax rather than calls to a named function
-_SYNTAX_FUNCTIONS = (expr.Case, expr.Cast, expr.TryCast, expr.Exists, expr.Array)
+# sqlglot models these as functions, but they are syntax rather than calls to a named function.
+# AND / OR / XOR (Connector) are functions in newer sqlglot versions (XOR already in 25.x).
+_SYNTAX_FUNCTIONS = (
+    expr.Case,
+    expr.Cast,
+    expr.TryCast,
+    expr.Exists,
+    expr.Array,
+    expr.Connector,
+    expr.Collate,
+)
 
 
 def _is_syntax(func: expr.Func) -> bool:
@@ -407,54 +444,83 @@ def _verify_from_tables(context, query_statement):
                 sources.add(t.alias)
     context.push_sources(sources)  # popped by _verify_query_statement
     for t in from_tables:
+        if len(t.parts) > 3:
+            # `a.b.c.orders`: catalog/db/name are only three of the parts, so the configuration
+            # cannot be matched against the table the database would really read
+            context.add_error(
+                f"Table {'.'.join(p.name for p in t.parts)} is not allowed: "
+                "names with more than three parts are not supported",
+                False,
+                1,
+            )
+            continue
+        is_cte = not t.db and t.name in context.cte_names
+        if not is_cte and not _verify_table_database(t, context):
+            continue
         found = False
         for config_t in context.config["tables"]:
             # Only CTE names can be referenced as tables. Subquery aliases
             # live in the same namespace for columns, not for table lookups.
-            if table_matches(t, config_t) or (
-                not t.db and t.name in context.cte_names
-            ):
+            if table_matches(t, config_t) or is_cte:
                 found = True
         if not found:
+            if _catalog_mismatch(t, context):
+                context.add_error(
+                    f"Table {t.name} is not allowed: catalog {t.catalog} is not allowed",
+                    False,
+                    1,
+                )
+                context.add_violation(
+                    {"type": "catalog", "table_name": t.name, "catalog_name": t.catalog}
+                )
+                continue
             context.add_error(f"Table {t.name} is not allowed", False, 1)
             context.add_violation(
                 {"type": "table", "table_name": t.name, "database_name": t.db or None}
             )
-        elif (
-            context.config.get("qualify_tables")
-            and not t.db
-            and t.name not in context.cte_names
-        ):
-            _qualify_table(t, context)
     return from_tables
 
 
-def _qualify_table(table: expr.Table, context: VerificationContext):
+def _verify_table_database(table: expr.Table, context: VerificationContext) -> bool:
     """
-    Adds the configured database_name to an unqualified table (config["qualify_tables"]).
-    Without it, the database resolves the name in its default schema, which may hold another
-    table with the same name.
+    The database checks of a real table reference: strict mode needs a qualifier, and a
+    qualifier must be in the `databases` allow-list when there is one. False if rejected.
     """
-    databases = set()
-    for config_t in context.config["tables"]:
-        if table_matches(table, config_t):
-            if not config_t.get("database_name"):
-                return  # configured without a database: the name is used as it is
-            databases.add(config_t["database_name"].lower())
-    if len(databases) > 1:
-        context.add_error(
-            f"Table {table.name} is ambiguous: qualify it with its database", False, 0.7
+    config = context.config
+    if not table.db:
+        if config.get("strict_database"):
+            context.add_error(
+                f"Table {table.name} must be qualified with its database", False, 0.7
+            )
+            return False
+        return True
+    databases = config.get("databases")
+    if databases is not None and table.db.lower() not in {d.lower() for d in databases}:
+        context.add_error(f"Database {table.db} is not allowed", False, 1)
+        context.add_violation(
+            {"type": "database", "table_name": table.name, "database_name": table.db}
         )
-        return
-    database = next(
-        c["database_name"] for c in context.config["tables"] if table_matches(table, c)
-    )
-    table.set("db", expr.to_identifier(database))
-    context.add_error(
-        f"Table {table.name} qualified with its database: {database}.{table.name}",
-        True,
-        0.3,
-    )
+        # the table itself is checked too, so a suggestion can add both
+    return True
+
+
+def _catalog_mismatch(table: expr.Table, context: VerificationContext) -> bool:
+    """
+    True if a reference is rejected only because of its catalog: the configuration has the
+    table (name and database) in another catalog, or, for a table it does not have, its default
+    catalog_name is another one. Widening the allow-list cannot help such a query.
+    """
+    if not table.catalog:
+        return False
+    same_table = [
+        c
+        for c in context.config["tables"]
+        if table_matches(table, {**c, "catalog_name": None})
+    ]
+    if same_table:
+        return True  # it matches by name and database, so the catalog is what differs
+    default = context.config.get("catalog_name")
+    return default is not None and default.lower() != table.catalog.lower()
 
 
 def _verify_sub_queries(context, query_statement):
@@ -494,6 +560,8 @@ def _verify_select_clause_element(
     elif isinstance(e, expr.Star):
         context.add_error("SELECT * is not allowed", True, 0.1)
         for t in from_tables:
+            if not t.db and t.name in context.cte_names:
+                continue  # a CTE, even one named like a configured table
             for config_t in context.config["tables"]:
                 if table_matches(t, config_t):
                     parent = e.parent

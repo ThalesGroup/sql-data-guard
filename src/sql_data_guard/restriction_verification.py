@@ -24,7 +24,13 @@ def verify_restrictions(
     else:
         and_exps = list(split_to_expressions(where_clause.this, expr.And))
     for c_t in context.config["tables"]:
-        for from_t in [t for t in from_tables if table_matches(t, c_t)]:
+        for from_t in [
+            t
+            for t in from_tables
+            # a CTE with the name of a configured table is not that table (its body is verified,
+            # with its restrictions, on its own)
+            if table_matches(t, c_t) and (t.db or t.name not in context.cte_names)
+        ]:
             for r in c_t.get("restrictions", []):
                 found = False
                 for sub_exp in and_exps:

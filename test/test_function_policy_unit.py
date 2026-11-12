@@ -71,6 +71,11 @@ def test_empty_allow_list_means_no_function_at_all():
         "product_name LIKE 'a%'",
         "id IS NULL",
         "EXISTS (SELECT 1 FROM orders WHERE account_id = 123)",
+        # AND / OR are function nodes in newer sqlglot versions
+        "id = 1 AND price > 2",
+        "id = 1 OR price > 2",
+        "NOT (id = 1 AND price > 2)",
+        "product_name COLLATE NOCASE",
     ],
 )
 def test_syntax_constructs_are_not_function_calls(select):
@@ -154,3 +159,29 @@ def test_standalone_if_is_a_function_but_case_when_is_not():
     assert not _verify("IF(id = 1, 'a', 'b')", "mysql", allowed_functions=[])["allowed"]
     assert _verify("IF(id = 1, 'a', 'b')", "mysql", allowed_functions=["if"])["allowed"]
     assert _verify("CASE WHEN id = 1 THEN 'a' ELSE 'b' END", "mysql", allowed_functions=[])["allowed"]
+
+
+def test_where_with_and_is_allowed_in_allow_list_mode():
+    result = verify_sql(
+        "SELECT id FROM orders WHERE account_id = 123 AND price > 1 OR id = 2 AND price < 5",
+        _config(allowed_functions=[]),
+    )
+    assert not [e for e in result["errors"] if e.startswith("Function")], result
+
+
+@pytest.mark.parametrize(
+    "dialect,connector", [("sqlite", "OR"), ("mysql", "OR"), ("mysql", "XOR")]
+)
+def test_functions_inside_connectors_are_still_checked(dialect, connector):
+    result = verify_sql(
+        f"SELECT id FROM orders WHERE account_id = 123 AND (upper(product_name) = 'A' {connector} id = 1)",
+        _config(allowed_functions=["lower"]),
+        dialect,
+    )
+    assert result["errors"] == ["Function upper is not in the allowed functions list"]
+    blocked = verify_sql(
+        f"SELECT id FROM orders WHERE account_id = 123 AND (id = 1 {connector} sleep(1) = 0)",
+        _config(),
+        dialect,
+    )
+    assert "Function sleep is not allowed" in blocked["errors"]

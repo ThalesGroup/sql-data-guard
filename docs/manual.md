@@ -50,7 +50,8 @@ A repaired query has been verified to comply with the policy: for example a disa
 |-----|----------|-------------|
 | `tables` | yes | Non-empty list of the tables the query may read. Any other table is rejected. A table must be listed only once. |
 | `tables[].table_name` | yes | Table name. |
-| `tables[].database_name` | no | Database/schema of the table. When set, a query that qualifies the table (`other_db.orders`) must use this name. An unqualified name (`orders`) also matches, and the database resolves it in its default schema, which may hold a different table with the same name: set `qualify_tables` to prevent that. |
+| `tables[].database_name` | no | Database/schema of the table. When set, a query that qualifies the table (`other_db.orders`) must use this name. An unqualified name (`orders`) also matches, and the database resolves it in its default schema, which may hold a different table with the same name: set `strict_database` to prevent that. See [Database names](#database-names). |
+| `tables[].catalog_name` | no | Catalog/project of the table, overriding the top-level `catalog_name`. |
 | `tables[].columns` | yes | Non-empty list of allowed columns. See [What is checked](#what-is-checked). |
 | `tables[].restrictions` | no | Row restrictions that must hold on every query of this table (see below). |
 | `tables[].column_masks` | no | Columns returned masked instead of in clear text. See [Column masking](#column-masking). |
@@ -58,7 +59,9 @@ A repaired query has been verified to comply with the policy: for example a disa
 | `blocked_functions` | no | Extra function names to reject, added to the built-in list. |
 | `allowed_functions` | no | Allow-list mode: when present, only these functions may be called. See [Function policy](#function-policy). |
 | `force_limit` | no | Maximum number of rows the outermost query may return. See [Row limit](#row-limit). |
-| `qualify_tables` | no | `true` to add the configured `database_name` to unqualified table names (`FROM orders` is fixed to `FROM orders_db.orders`). A table configured in two databases is then rejected as ambiguous when unqualified, and a table also configured without a `database_name` is left as it is. Default `false`. |
+| `databases` | no | Allow-list of databases/schemas. See [Database names](#database-names). |
+| `strict_database` | no | `true` to require a database qualifier on every table. See [Database names](#database-names). |
+| `catalog_name` | no | Catalog/project of the tables (`catalog.schema.table`, `project.dataset.table`). See [Database names](#database-names). |
 
 ### Identifier case
 
@@ -88,7 +91,31 @@ Only literal values count: the column on the left, a number, string or boolean o
 
 ### Invalid configuration
 
-An unsupported `operation`, a malformed `BETWEEN`/`IN`, a restriction without a plain column name (`"column": "a; DROP ..."`, `"t.a"`) or without a `value`, a value that is not a number, string or boolean, `columns` that are not a list of strings, a missing `table_name`/`columns`, an empty `tables` list, a duplicated table, or a `max_length`/`force_limit` that is not a positive integer makes `verify_sql` return `allowed: false` with a message explaining the problem (the validation itself is `restriction_validation.validate_restrictions`, which raises `UnsupportedRestrictionError` / `ValueError`).
+An unsupported `operation`, a malformed `BETWEEN`/`IN`, a restriction without a plain column name (`"column": "a; DROP ..."`, `"t.a"`) or without a `value`, a value that is not a number, string or boolean, `columns` that are not a list of strings, a missing `table_name`/`columns`, an empty `tables` list, a duplicated table, or a `max_length`/`force_limit` that is not a positive integer makes `verify_sql` return `allowed: false` with a message explaining the problem. So do the database options below (a `database_name` missing from `databases`, a table without `database_name` in strict mode, a non-boolean `strict_database`, an empty `catalog_name`).
+
+`validate_config(config)` returns the same problems as a list of strings, without verifying a query (an empty list when the configuration is valid; for now validation stops at the first problem, so the list has at most one entry). Use it to tell a bad configuration apart from a blocked query: `verify_sql` reports both as `allowed: false`. It never raises.
+
+## Database names
+
+Three optional settings make the database part of table names strict. Each is checked on every table reference (FROM, JOIN, sub-queries, CTE bodies, set operations); a rejection cannot be fixed.
+
+- `databases`: a list of the databases/schemas a query may use. A table qualified with any other database (`finance.orders`) is rejected (`Database finance is not allowed`), whatever `tables` says, and every `database_name` in `tables` must be in the list. An unqualified table is not affected (use `strict_database`), and a table configured without a `database_name` matches only qualifiers in the list.
+- `strict_database: true`: every table in `tables` must have a `database_name`, and a table reference without a database qualifier is rejected (`Table orders must be qualified with its database`). CTE names are not table references. The query is rejected, not rewritten: qualifying it would make it read a table its author did not name.
+- `catalog_name`: the catalog/project of a 3-part name (`catalog.schema.table` in Trino, Snowflake, DuckDB, SQL Server; `project.dataset.table` in BigQuery) must match it (`Table orders is not allowed: catalog otherproj is not allowed`). A table can override it with its own `catalog_name`. A name without a catalog is the connection's own catalog and is accepted. Without `catalog_name`, the catalog part is not checked.
+
+Names are compared case-insensitively. Table names with more than three parts (`server.db.schema.table`) are always rejected: the guard could not match the configuration against the table the database would read.
+
+```json
+{
+  "databases": ["sales", "hr"],
+  "strict_database": true,
+  "catalog_name": "my-project",
+  "tables": [
+    {"table_name": "orders", "database_name": "sales", "columns": ["id", "amount"]},
+    {"table_name": "people", "database_name": "hr", "columns": ["id", "name"]}
+  ]
+}
+```
 
 ## Column masking
 
@@ -160,13 +187,13 @@ verify_sql(sql, new_config, "postgres")       # allowed
 ```
 
 `suggest_config(sql, config, dialect=None)` returns:
-- `{"tables": [...]}` with only what is missing: new tables with the columns the query uses (in any clause, in sub-queries, CTEs and joins), and new columns for tables already configured. A table in a database/schema keeps its `database_name`.
+- `{"tables": [...]}` with only what is missing: new tables with the columns the query uses (in any clause, in sub-queries, CTEs and joins), and new columns for tables already configured. A table in a database/schema keeps its `database_name`. When the configuration has a `databases` list that lacks a database the query uses, the delta also has `"databases": [...]`.
 - `{"tables": []}` if the query needs nothing added.
-- `None` when adding to the allow-list cannot make the query acceptable. This is the case for anything that is not a plain read-only query (several statements, `INSERT`/`DROP`/..., `SELECT INTO`), a blocked function, a column that cannot be attributed to one table (an unqualified column over several tables), and a table the query uses without naming any of its columns (`SELECT *`, `COUNT(*)`), because a configured table must list its columns.
+- `None` when adding to the allow-list cannot make the query acceptable. This is the case for anything that is not a plain read-only query (several statements, `INSERT`/`DROP`/..., `SELECT INTO`), a blocked function, a column that cannot be attributed to one table (an unqualified column over several tables), a table the query uses without naming any of its columns (`SELECT *`, `COUNT(*)`), because a configured table must list its columns, a table of another catalog than `catalog_name`, and an unqualified table in strict mode.
 
-The suggestion is checked before it is returned: `verify_sql` accepts the query with `merge_config(config, delta)`, and no table or column of the query is left outside the allow-list. Only `tables` and their `columns` are ever suggested; restrictions, masks, function lists and `force_limit` are never changed, and a rejection for one of those reasons gives `None`. `suggest_config` never raises.
+The suggestion is checked before it is returned: `verify_sql` accepts the query with `merge_config(config, delta)`, and no table or column of the query is left outside the allow-list. Only `tables`, their `columns` and `databases` are ever suggested; restrictions, masks, function lists, `force_limit`, catalogs and the database flags are never changed, and a rejection for one of those reasons gives `None`. `suggest_config` never raises.
 
-`merge_config(config, delta)` returns a copy of `config` with the delta added: columns are added to the table of the same name (and `database_name`), other tables are appended, and duplicates (compared case-insensitively) are skipped. A malformed delta, or one with keys other than `table_name`, `database_name` and `columns`, raises `ValueError`, so a delta that was edited by hand cannot add restrictions or other settings.
+`merge_config(config, delta)` returns a copy of `config` with the delta added: columns are added to the table of the same name (and `database_name`), other tables are appended, delta `databases` are appended to `databases` (created if missing), and duplicates (compared case-insensitively) are skipped. A malformed delta, or one with keys other than `tables`/`databases` and, per table, `table_name`, `database_name` and `columns`, raises `ValueError`, so a delta that was edited by hand cannot add restrictions or other settings.
 
 Whether to apply a suggestion is a decision for a person: it widens what queries can read.
 
