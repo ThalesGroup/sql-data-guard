@@ -9,7 +9,7 @@ package-dir = {"" = "src"}
 extra-index-url = ["https://pypi.org/simple"]
 [project]
 name = "sql-data-guard"
-version = "UPDATED-BY-WORKFLOW"
+version = "0.2.2.dev0"
 dependencies = [
     # lower bound: oldest version the test-suite passes on; upper bound: next untested major
     "sqlglot>=25.20.1,<31"
