@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.2 - 2026-11-12
+
 ### Added
 - `table_level_access` config option: `columns` becomes optional, and a table without it is approved as a whole, so `SELECT *` / `t.*` are kept on it. Tables that list `columns` (and every masked table) stay column-level. `suggest_config` suggests tables without `columns` in this mode. See the manual, "Table-level access".
 - `allow_metadata` config option: allows `SHOW` / `DESCRIBE` schema-discovery statements (`DESCRIBE t`, `SHOW COLUMNS`, `SHOW CREATE TABLE`/`VIEW`, `SHOW TABLES`/`VIEWS`, `SHOW SCHEMAS`/`DATABASES`, `SHOW CATALOGS`, `SHOW PARTITIONS`, `SHOW TBLPROPERTIES`, `DESCRIBE DATABASE`), scoped by the configured tables, `databases`, `strict_database` and `catalog_name`. Other forms stay rejected. Results are not filtered: see the manual, "Metadata statements".
