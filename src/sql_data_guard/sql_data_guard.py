@@ -644,6 +644,7 @@ def _verify_select_clause_element(
             for config_t in context.config["tables"]:
                 if table_matches(t, config_t) and parent is not None:
                     qualifier = t.alias_or_name if mixed else ""
+                    items: List[expr.Expression]
                     if "columns" not in config_t:
                         items = [expr.Column(this=expr.Star(), table=expr.to_identifier(qualifier))]
                     else:
