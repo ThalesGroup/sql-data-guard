@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-12
+
 ### Added
 - Database name options: a top-level `databases` allow-list (a table qualified with an unlisted database is rejected, and every `database_name` must be listed), `strict_database` (every table needs a `database_name` and unqualified table references are rejected) and `catalog_name` (top level or per table: the catalog/project of a 3-part name must match). See the manual, "Database names".
 - `validate_config(config)`: returns the configuration's problems as a list without verifying a query, to tell a bad configuration from a blocked query.
