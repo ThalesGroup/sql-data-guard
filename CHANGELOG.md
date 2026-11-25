@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.4 - 2026-11-25
+
 ### Fixed
 - A `VALUES` CTE (`WITH x (c) AS (VALUES ...)`) is accepted on the oldest supported sqlglot (25.20.1) too, where it is parsed as a bare `VALUES` instead of `SELECT * FROM (VALUES ...)` and was rejected with "VALUES statement is not allowed in a WITH clause". Sub-queries inside the rows are still verified. 0.2.3 was tagged but never published because of this.
 
