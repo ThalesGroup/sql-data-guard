@@ -501,3 +501,45 @@ class TestValuesCte:
 
         assert result["allowed"] is False
         assert "Table payroll is not allowed" in result["errors"]
+
+
+class TestStarOverCte:
+    _config = {
+        "tables": [
+            {"table_name": "cert_feed", "database_name": "tr_certs", "columns": ["day", "domain"]}
+        ]
+    }
+
+    def test_star_over_cte_is_kept(self):
+        result = verify_sql(
+            "WITH ranked AS (SELECT day, domain, ROW_NUMBER() OVER (PARTITION BY domain "
+            "ORDER BY day DESC) AS rn FROM tr_certs.cert_feed), "
+            "sites AS (SELECT * FROM ranked WHERE rn = 1) SELECT s.day, s.domain FROM sites s",
+            self._config,
+            "athena",
+        )
+
+        assert result["allowed"] is True
+        assert result["errors"] == []
+        assert result["fixed"] is None
+
+    def test_star_over_cte_does_not_hide_a_disallowed_column_in_the_body(self):
+        result = verify_sql(
+            "WITH c AS (SELECT day, secret FROM tr_certs.cert_feed) SELECT * FROM c",
+            self._config,
+            "athena",
+        )
+
+        assert result["allowed"] is False or "secret" not in (result["fixed"] or "")
+        assert result["errors"]
+
+    def test_star_over_cte_joined_with_a_real_table_still_expands_the_table(self):
+        result = verify_sql(
+            "WITH c AS (SELECT day FROM tr_certs.cert_feed) "
+            "SELECT * FROM c JOIN tr_certs.cert_feed f ON f.day = c.day",
+            self._config,
+            "athena",
+        )
+
+        assert result["allowed"] is False
+        assert "SELECT * is not allowed" in result["errors"]

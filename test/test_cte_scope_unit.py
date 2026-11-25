@@ -84,5 +84,5 @@ def test_star_over_a_cte_named_like_a_table_is_not_expanded_to_the_table_columns
     result = _verify(
         "WITH orders AS (SELECT id FROM orders WHERE account_id = 123) SELECT * FROM orders"
     )
-    # not expanded to id, product_name, account_id (the CTE only has id): nothing is left
-    assert not result["allowed"] and result["fixed"] is None, result
+    # not expanded to id, product_name, account_id: the CTE only has id, so `*` is kept as written
+    assert result == {"allowed": True, "errors": [], "fixed": None, "risk": 0}

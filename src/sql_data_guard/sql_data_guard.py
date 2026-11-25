@@ -702,10 +702,10 @@ def _verify_select_clause_element(
 
 def _star_allowed(from_tables: List[expr.Table], context: VerificationContext) -> bool:
     """
-    True if `*` can be kept as written: every source of the query is approved as a whole. That is
-    a configured table without `columns` (only possible with `table_level_access`), or a CTE /
-    derived table whose own SELECT kept a `*` for such tables. With any other source, a column
-    list is needed to expand `*` and it is rewritten to the allowed columns.
+    True if `*` can be kept as written: every real table of the query is approved as a whole (a
+    configured table without `columns`, only possible with `table_level_access`), and the other
+    sources are CTEs / derived tables, whose own SELECT is verified. With a column-level real
+    table, a column list is needed to expand `*` and it is rewritten to the allowed columns.
     """
     sources = context.current_sources
     real = [t for t in from_tables if t.db or t.name not in context.cte_names]
@@ -715,8 +715,9 @@ def _star_allowed(from_tables: List[expr.Table], context: VerificationContext) -
         matching = [c for c in context.config["tables"] if table_matches(t, c)]
         if not matching or any("columns" in c for c in matching):
             return False
-    dynamic = context.dynamic_tables
-    return all(WILDCARD in dynamic.get(name, ()) for name in sources)
+    # CTEs, derived tables and LATERAL/UNNEST sources: their bodies were verified (disallowed
+    # columns removed or rejected, masks applied), so `*` over them only exposes what they expose
+    return True
 
 
 def _apply_mask(col: expr.Column, from_tables: List[expr.Table], context: VerificationContext):
