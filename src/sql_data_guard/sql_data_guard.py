@@ -478,6 +478,15 @@ def _verify_ctes(query_statement: expr.Query, context: VerificationContext):
     recursive = bool(with_clause and with_clause.args.get("recursive"))
     for cte in query_statement.ctes:
         name = cte.alias_or_name
+        if isinstance(cte.this, expr.Values):
+            # older sqlglot keeps `x (c) AS (VALUES ...)` as a bare VALUES (newer ones wrap it in a
+            # SELECT, see `_is_values_only_select`): constant rows, but a sub-query in a row is verified
+            for sub in cte.this.find_all(expr.Subquery):
+                if sub.find_ancestor(expr.Subquery) is None:  # nested ones are verified with their query
+                    _verify_query_statement(sub.this, context)
+            context.add_cte_name(name)
+            _add_table_alias(cte, context)
+            continue
         if not isinstance(cte.this, expr.Query):
             context.add_error(
                 f"{cte.this.key.upper()} statement is not allowed in a WITH clause", False, 0.9
