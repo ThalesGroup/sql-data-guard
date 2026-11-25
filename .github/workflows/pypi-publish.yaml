@@ -53,6 +53,7 @@ jobs:
         repository-url: https://test.pypi.org/legacy/
         packages-dir: dist-testpypi
         verbose: true
+        skip-existing: true  # TestPyPI never accepts the same file twice: lets a failed release be re-run
 
     - name: Create virtual environment for test PyPi
       run: |
@@ -86,18 +87,6 @@ jobs:
 
     - name: Build a binary wheel and a source tarball for test PyPi
       run: python3 -m build
-
-    - name: Store the distribution packages
-      uses: actions/upload-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
-
-    - name: Download all the dists
-      uses: actions/download-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
 
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
