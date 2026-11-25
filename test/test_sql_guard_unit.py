@@ -471,3 +471,33 @@ class TestMaxLength:
         result = verify_sql(long_sql, config_default_max_length)
         assert result["allowed"] == False
         assert "SQL exceeds maximum length of 10000 characters." in result["errors"]
+
+
+class TestValuesCte:
+    _config = {
+        "tables": [
+            {"table_name": "site_info", "database_name": "default", "columns": ["domain"]}
+        ]
+    }
+
+    def test_values_cte_with_column_list(self):
+        result = verify_sql(
+            "WITH ex (domain) AS (VALUES ('a'), ('b')) "
+            "SELECT domain FROM default.site_info WHERE domain NOT IN (SELECT domain FROM ex)",
+            self._config,
+            "athena",
+        )
+
+        assert result["allowed"] is True
+        assert result["errors"] == []
+
+    def test_values_cte_still_verifies_sub_queries(self):
+        result = verify_sql(
+            "WITH ex (domain) AS (VALUES ((SELECT salary FROM payroll))) "
+            "SELECT domain FROM default.site_info WHERE domain IN (SELECT domain FROM ex)",
+            self._config,
+            "athena",
+        )
+
+        assert result["allowed"] is False
+        assert "Table payroll is not allowed" in result["errors"]

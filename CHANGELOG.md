@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- A `VALUES` CTE (`WITH x (c) AS (VALUES ...)`) was rejected with "SELECT * is not allowed" and "No legal elements in SELECT clause": sqlglot parses it as `SELECT * FROM (VALUES ...)`, which has no table to expand `*` against. Constant rows are now accepted; sub-queries inside the rows are still verified.
+
 ## 0.2.2 - 2026-11-12
 
 ### Added

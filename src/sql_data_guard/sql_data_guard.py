@@ -605,6 +605,14 @@ def _verify_select_clause(
     select_clause: expr.Query,
     from_tables: List[expr.Table],
 ):
+    if _is_values_only_select(select_clause):
+        # `x (c) AS (VALUES ...)` is parsed as `SELECT * FROM (VALUES ...)`: there is no table
+        # to expand `*` against and no data to protect, but a sub-query in a row is still verified
+        values = get_from(select_clause).this
+        for sub in values.find_all(expr.Subquery):
+            if sub.parent_select is select_clause:  # nested ones are verified with their query
+                _verify_query_statement(sub.this, context)
+        return
     for select in select_clause.selects:
         for sub in select.find_all(expr.Subquery):
             _verify_query_statement(sub.this, context)
@@ -617,6 +625,22 @@ def _verify_select_clause(
         select_clause.expressions.remove(e)
     if len(select_clause.expressions) == 0:
         context.add_error("No legal elements in SELECT clause", False, 0.5)
+
+
+def _is_values_only_select(select_clause: expr.Query) -> bool:
+    """True for `SELECT * FROM (VALUES ...)` with nothing else: constant rows, no table."""
+    if not isinstance(select_clause, expr.Select):
+        return False
+    if len(select_clause.expressions) != 1 or not isinstance(
+        select_clause.expressions[0], expr.Star
+    ):
+        return False
+    from_clause = get_from(select_clause)
+    return (
+        from_clause is not None
+        and isinstance(from_clause.this, expr.Values)
+        and not select_clause.args.get("joins")
+    )
 
 
 def _verify_select_clause_element(
