@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.3 - 2026-11-25
+
 ### Fixed
 - `SELECT * FROM <cte>` (or over a derived table) was rejected with "SELECT * is not allowed" and "No legal elements in SELECT clause", although the CTE body is verified on its own. `*` is now kept over CTEs and derived tables; a real column-level table in the same FROM is still expanded or rejected as before.
 - A `VALUES` CTE (`WITH x (c) AS (VALUES ...)`) was rejected with "SELECT * is not allowed" and "No legal elements in SELECT clause": sqlglot parses it as `SELECT * FROM (VALUES ...)`, which has no table to expand `*` against. Constant rows are now accepted; sub-queries inside the rows are still verified.
